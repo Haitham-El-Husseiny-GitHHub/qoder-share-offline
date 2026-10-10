@@ -1,0 +1,28 @@
+{
+  "build": 79,
+  "sha256": {
+    "Qoder-Share-unified-0.3.5-79.apk": "70c983a0519fbefaa501662beb365d45329e94740b906637bf762780d43da9ef",
+    "setup-rish.sh": "56e9d06f6e4ddcb806cd2c6f121bbf847ac073b724856a50aa825ffc9c3ae89e",
+    "install.py": "92c955b82375633be9652e1085cc0cb430310a20681d988b002eaf69f9743f96",
+    "fetch_model.py": "832b5bb1362e79ba263358935caff15b9c0f086de1e8c0fe54fb12830e549c58",
+    "README.md": "d2d179f586a79b192cf32281c296ed53fc9cd52e49cd32a7b7ac152d10e09474",
+    "models.json": "2e62874a0abc6f0fcd9180ef1e54db77afbeb57bb7df5850f47f7769251ee177",
+    "backend/engineering_tools.py": "b07dd64686a37c3a20ad2e502d7938a60c69c4c55638b92ed93636fba1aa3b36",
+    "backend/device_tools.py": "46898e83f0a75b0f3ea07aa2960190290d68892016f6ba99b0e2e810f5067f47",
+    "backend/bridge.py": "c7daa3240e6f4fca4d9ce2cb70b5bab0cc7117032fb496a7fc4c9a8ba52a5e46",
+    "backend/server.py": "a8ff12e9fb3b006912b95feedf9368f282f5bd20b6cce5b38d43242eb0dbf54b",
+    "backend/coding_runner.py": "d555697dd6fca70db5775f400e2598cd21b8296321f82896b78e61aea01db78a",
+    "backend/ENGINEERING_TOOLS.md": "441e2f69d0770c35917b124bd3e74b6cff99c2c58ca4a465d67bd14191c18207",
+    "backend/bridge-start.sh": "04462657844e998118589a45a3e8d2169c2b57a09c49799f1526ad77ff457a85",
+    "backend/extra_models.json": "6498d987d3cc04f0a17b8806541e3b979c805726c33092a8538529b86aaf1190",
+    "backend/runtime_config.py": "addda4cd86e073868b87209e60d302ae1d70390dd0bc7a1d8b0fb142e4e46c02",
+    "backend/index.html": "7fa22b71819c60fbb8deb6d330c598dc64ac26b9c5932f810deff53acc9aee08",
+    "backend/coding.html": "2d6e08e485a174d14017471e00b981efba3c417dc07826dbffbe9e0e376df82f",
+    "backend/local_cli.py": "25e215f6313c4cc5bede582f08c91ba0280c8b5cf20b44056b909ad4381b0b25",
+    "backend/coding.js": "de5d0674c630d7c7d09c46e1b6213370f063612b81592ac6dfed7b89d14c3df3",
+    "backend/runtime_controller.py": "50eb6b42eab14849c0120d7624ecd6552e79f8270ade0607f3b80f33ae8d95cb",
+    "backend/app.js": "b78ca2f7ef9354e450da2c78b93c63d119427b64e3f3cc7339be74cd568b6030",
+    "backend/session_store.py": "f97ac455cc278e30db3bd685bc017a56eac3e3dd53c996029bdd02dadb0f90bc",
+    "tests/test_setup.py": "5ca96f8e23ed2014f4f238d0e995e3e36a952e9928b40b2d328d7373db1b91c5"
+  }
+}

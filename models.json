@@ -1,0 +1,56 @@
+[
+  {
+    "mode": "coding",
+    "name": "Qwen Coder 3B Abliterated",
+    "file": "Coder-Qwen2.5-3B-abliterated.gguf",
+    "source_file": "Qwen2.5-Coder-3B-Instruct-abliterated-Q4_K_M.gguf",
+    "repo": "bartowski/Qwen2.5-Coder-3B-Instruct-abliterated-GGUF",
+    "revision": "d3030e6c3380c87316eeb6b35cdf5c94a68f1986",
+    "size": 1929903488,
+    "sha256": "d5c108dfbdac44c738e45a84d5624716cfb8522d1410f46a7108167ee4bd0cac"
+  },
+  {
+    "route": "granite-code",
+    "mode": "granite",
+    "id": "Granite-4.1-3B-Abliterated-Disinhibited",
+    "name": "Granite 4.1 3B",
+    "file": "granite-4.1-3b-Abliterated-AND-Disinhibited.Q4_K_M.gguf",
+    "repo": "mradermacher/granite-4.1-3b-Abliterated-AND-Disinhibited-GGUF",
+    "revision": "2173a059df72701d0d933fb32368003665fbc974",
+    "size": 2099502624,
+    "sha256": "b4ebb19a7ea706b107f6b3d78ca31dce7005a84ea31da2b14437e2b2cca68a58"
+  },
+  {
+    "route": "dolphin-code",
+    "mode": "dolphin",
+    "id": "Dolphin-3.0-Llama-3.2-3B",
+    "name": "Dolphin Llama 3B \u00b7 MR",
+    "file": "Dolphin3.0-Llama3.2-3B.Q4_K_M.gguf",
+    "repo": "mradermacher/Dolphin3.0-Llama3.2-3B-GGUF",
+    "revision": "3820144a57c08b1eb3e60c2a8dfbdba3bf717f04",
+    "size": 2019382592,
+    "sha256": "c48c5cf97be2817be6cde382a00480f33e39fdb5b87b40c4eb57dacc44a7759d"
+  },
+  {
+    "route": "phi-code",
+    "mode": "phi",
+    "id": "Phi-3.5-Mini-Uncensored",
+    "name": "Phi 3.5 Mini",
+    "file": "Phi-3.5-mini-instruct_Uncensored-Q4_K_M.gguf",
+    "repo": "bartowski/Phi-3.5-mini-instruct_Uncensored-GGUF",
+    "revision": "ee8d5d6896f1ac8d0f95f7dff87bc2b2d7aa6e72",
+    "size": 2393232448,
+    "sha256": "9ad0e44f9441c0ffb4adc8f3bd3a9ba3d662aaa82f617a6dfbff6d4ae31a946d"
+  },
+  {
+    "route": "qwen35-code",
+    "mode": "qwen35",
+    "id": "Huihui-Qwen3.5-4B-Abliterated",
+    "name": "Huihui Qwen3.5 4B",
+    "file": "Huihui-Qwen3.5-4B-abliterated.Q4_K_M.gguf",
+    "repo": "mradermacher/Huihui-Qwen3.5-4B-abliterated-GGUF",
+    "revision": "4a5daa6fbefca5fe822dc65fcb95cc4576fa9720",
+    "size": 2707514688,
+    "sha256": "423f10b6ec2d99c3378143d7cd3b80eb4887b3ed92103103ac59173b404f4f7c"
+  }
+]
