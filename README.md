@@ -1,26 +1,28 @@
-# Qoder Share Offline — Build 82
+# Qoder Share Offline — Build 82 with Installer83 hotfix
 
-This repository retains the Build 82 Android tools installer and offline companion release.
+This repository retains the Build 82 Android tools installer and offline companion release. The original Installer82 and first full ZIP had a script/argument mismatch; Installer83 and the replacement ZIP are the corrected pair.
 
 ## Downloads
 
-Open the [Build 82 release](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/tag/offline-82).
+Open the [Build 82 corrected release](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/tag/offline-82).
 
-- **Qoder-Tools-Installer-82.apk** — Android installer and Termux bridge.
+- **Qoder-Tools-Installer-83.apk** — signed Android installer and Termux bridge. It updates an installed Installer82 using the same package and signing key.
 - **Qoder-Share-Tools-82-release.zip** — companion package.
-- **Qoder-Android-Tools-82.zip** — complete ARM64 Termux tools bundle, 1,706,792,466 bytes.
+- **Qoder-Android-Tools-82.zip** — corrected complete ARM64 Termux tools bundle, 1,706,494,607 bytes.
 - **Qoder-Android-Tools-82-parts-index.md** — 41 direct 40 MiB split downloads for clients that cannot fetch the full archive in one request.
-- **[INSTALLATION-BUILD-82.md](INSTALLATION-BUILD-82.md)** — complete installation procedure, offline fallback, Shizuku/Rish setup, verification, and update instructions.
+- **[INSTALLATION-BUILD-82.md](INSTALLATION-BUILD-82.md)** — complete installation procedure, split-archive recovery, Shizuku/Rish setup, verification, and update instructions.
 - **Qoder-Installer-82-Technical-Guide.md** — package layout, storage, updates, and edited-APK behavior.
 
 Full archive SHA-256:
 
-`2f9287b1b9222bd305d734b549121c5d1df758c793f244eaedb4716884fe0ee7`
+`f1d1eae62830f41f57ae3fa64c0363c785a65a6c37a01cb4ec776cfad92211c8`
 
-Installer APK SHA-256:
+Installer83 APK SHA-256:
 
-`e477ce6357999355d74efce87735642f7ac35f076c464d6665ae5ac3ed04670b`
+`97549c0bac84e2093185e0b2d59581ff5f95d2fb5e08038ba8b1ff3790a30896`
 
 The installer keeps the large toolchain in the Termux prefix. Termux is required for the coding and build tools; Shizuku/Rish is required for device operations such as package inspection, installation, and logcat. The complete installation and limitations are documented in [INSTALLATION-BUILD-82.md](INSTALLATION-BUILD-82.md).
 
-Build 79 was removed. Build 82 is the only published release.
+Delete an older downloaded tools ZIP before selecting the replacement. Installer83 checks the replacement’s exact size and SHA-256 before extraction.
+
+Build 79 was removed. Build 82 with the Installer83 compatibility fix is the only published release.
