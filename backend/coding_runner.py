@@ -329,6 +329,8 @@ def run(job):
                     state.update(status='failed',verification='NOT_VERIFIED',result=baseline_error+'\nWorkspace: '+str(workspace.root),error=baseline_error.strip())
                     return state
                 messages.append({'role':'user','content':'Observed original failure:\n'+detail[:3000]})
+                brief=task_router.failure_brief(workspace.root, detail)
+                if brief:messages.append({'role':'user','content':brief[:6000]})
             finish_attempts=0
             for turn in range(plan['max_steps']):
                 begin('generating','Generating coding step '+str(turn+1),'Waiting for the local model');state['turn']=turn+1
@@ -366,6 +368,16 @@ def run(job):
                     except (ValueError,OSError,KeyError,TypeError) as exc:result={'error':redact(exc)}
                     end(result)
                     record(name,args,result)
+                    if name in {'write_file','edit_patch','unified_patch'} and isinstance(result,dict) and not result.get('error') and plan.get('checks') and not workspace.readonly:
+                        begin('verify_goal','Checking the edit against the original failure')
+                        journal.begin('verify_goal',{'run_checks':True})
+                        goal=runtime.verify(True);record('verify_goal',{'run_checks':True},goal)
+                        end({'success':goal['verified'],'output':json.dumps(compact(goal)),'error':None if goal['verified'] else 'Checks still failing: '+', '.join(goal['missing'])})
+                        state['verification_results']=goal
+                        if goal['verified']:
+                            state.update(status='completed',verification='GOAL_VERIFIED',result='Verified after the edit.\nVerified workspace: '+str(workspace.root))
+                            return state
+                        messages.append({'role':'user','content':'The edit did not pass the same check. Missing: '+json.dumps(goal['missing'])+'. Patch the cited cause. Do not repeat an identical edit.'})
             raise ValueError('Coding step limit reached; evidence saved.')
     except Cancelled:
         state.update(status='stopped',result='Stopped by you. Completed file changes and operation history are retained.')

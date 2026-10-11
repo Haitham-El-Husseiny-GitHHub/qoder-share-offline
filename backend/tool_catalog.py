@@ -137,6 +137,16 @@ def discover(config=None, device=True):
         tools['adb']['access'] = access['adb']
     sdk = Path(config.get('android_sdk') or os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or str(Path.home() / 'Android/Sdk'))
     access['android_sdk'] = str(sdk) if (sdk / 'platforms').is_dir() else 'missing'
+    for tool in tools.values():
+        state = tool.get('access')
+        if not tool['installed'] or state == 'missing':
+            tool['availability'] = 'unavailable'
+        elif state == 'unavailable':
+            tool['availability'] = 'failed_probe'
+        elif state == 'available':
+            tool['availability'] = 'verified'
+        else:
+            tool['availability'] = 'needs_user'
     return {'schema': 1, 'checked_at': time.time(), 'tools': tools, 'access': access, 'adapter_groups': ADAPTER_GROUPS}
 
 

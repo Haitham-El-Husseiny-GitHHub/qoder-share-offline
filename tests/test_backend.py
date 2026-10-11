@@ -141,6 +141,12 @@ class RouterTests(unittest.TestCase):
         app=self.root/'prettyup';app.mkdir();(app/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
         other=self.root/'other';other.mkdir();(other/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
         self.assertEqual(task_router.locate_project(self.root,'i have an app prettyup, it crashes upon opening'),app)
+    def test_failure_brief_loads_cited_source_not_the_test(self):
+        (self.root/'total.py').write_text('def total(a,b):\n    return a+b+1\n')
+        (self.root/'tests').mkdir();(self.root/'tests'/'test_total.py').write_text('def test_total():\n    assert False\n')
+        output='File "%s", line 2, in total\nFile "%s", line 2, in test_total\n'%(self.root/'total.py',self.root/'tests'/'test_total.py')
+        brief=task_router.failure_brief(self.root, output)
+        self.assertIn('total.py',brief);self.assertIn('return a+b+1',brief);self.assertNotIn('assert False',brief)
     def test_small_tool_surface(self):
         selected=tools(runner.TOOLS,self.plan('Create a Python app'))
         names={x['name'] for x in selected}
@@ -253,8 +259,15 @@ class WorkerTests(unittest.TestCase):
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Everything is fixed.'}):state=runner.run(job(self.project))
         self.assertEqual(state['status'],'needs_verification');self.assertNotEqual(state['verification'],'GOAL_VERIFIED')
     def test_stop_resume_does_not_repeat_patch(self):
-        with patch.object(runner,'complete',side_effect=[self.edit(),runner.Cancelled('disconnect')]):stopped=runner.run(job(self.project))
-        self.assertEqual(stopped['status'],'stopped')
+        calls={'n':0}
+        original=runner.Workspace.command
+        def command(self, argv, **kwargs):
+            if argv[:3]==['python3','-m','unittest']:
+                calls['n']+=1
+                if calls['n']==2:raise runner.Cancelled('disconnect')
+            return original(self, argv, **kwargs)
+        with patch.object(runner.Workspace,'command',command),patch.object(runner,'complete',return_value=self.edit()):stopped=runner.run(job(self.project))
+        self.assertEqual(stopped['status'],'stopped',stopped.get('error'))
         next_job=job(self.project,'b'*32);next_job['resume_from']='a'*32
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Recovered and verified.'}):state=runner.run(next_job)
         self.assertEqual(state['status'],'completed',state.get('error'));self.assertEqual(len(state['patches']),1)

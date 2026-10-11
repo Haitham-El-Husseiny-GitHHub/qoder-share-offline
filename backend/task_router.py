@@ -141,7 +141,7 @@ def select(root, objective, profile, inventory, config):
             'adapters': adapters, 'required': required, 'checks': checks, 'manager': detected['manager'],
             'prerequisites': {name: inventory['tools'][name]['missing'] for name in adapters if not inventory['tools'][name]['installed']},'custom_checks':bool(custom),
             'mutating': route in {'source_fix', 'source_build', 'apk_modify','text_edit'} and profile not in {'REVIEW', 'AUDIT'},
-            'max_steps': 32, 'max_identical_failures': 2}
+            'max_steps': 6, 'max_identical_failures': 2}
 
 
 def evidence(journal):
@@ -163,6 +163,38 @@ def evidence(journal):
     missing = [kind for kind in plan['required'] if kind not in current]
     return {'verified': not missing, 'required': plan['required'], 'passed': sorted(current), 'missing': missing,
             'revision': revision, 'checks': data['checks'][-20:], 'artifacts': data['artifacts'], 'workspace': data['workspace']}
+
+
+def failure_brief(root, output, limit=2):
+    """Load the source files a failure already named, so the model does not spend a turn searching."""
+    root = Path(root)
+    seen = []
+    for match in re.finditer(r'(?:/|\./|\b)[\w./\\-]{1,180}\.(?:py|js|jsx|ts|tsx|kt|java|kts|gradle|xml|smali|c|cc|cpp|h|go|rs)\b', output or ''):
+        raw = match.group(0).strip('.,:()')
+        candidate = Path(raw)
+        try:
+            if candidate.is_absolute():
+                rel = candidate.resolve().relative_to(root.resolve())
+            else:
+                rel = Path(raw)
+                if not (root / rel).resolve().is_relative_to(root.resolve()):
+                    continue
+            path = (root / rel).resolve()
+            key = str(rel)
+            if path.is_file() and key not in seen:
+                seen.append(key)
+        except (OSError, ValueError):
+            continue
+    source = [p for p in seen if not any(part in {'tests', 'test', '__tests__'} for part in Path(p).parts) and not Path(p).name.startswith('test_')]
+    chunks = []
+    for rel in (source or seen)[:limit]:
+        try:
+            chunks.append(rel + '\n' + (root / rel).read_text()[:2500])
+        except (OSError, UnicodeError):
+            continue
+    if not chunks:
+        return ''
+    return 'Files cited by the failure, already read. Apply one edit_patch to the cause. Do not search first.\n\n' + '\n\n'.join(chunks)
 
 
 def check_kind(argv, plan):

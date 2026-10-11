@@ -1,5 +1,6 @@
 """Find an app's source before the model is asked. Phone, GitHub, then Cloudflare."""
 import json, os, re, shutil, subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 IGNORE={'.git','node_modules','.venv','venv','__pycache__','build','dist','.gradle','.qoder-workspaces','.qoder-worktrees','.qoder-artifacts','.qoder-sources'}
@@ -178,21 +179,30 @@ def acquire(objective, workspace, device=None, config=None, run=None, clone=None
     run=run or _default_run
     clone=clone or clone_repo
     http_get=http_get or _http_get
-    local=find_local(token, search_roots(workspace, config))
-    local.sort(key=lambda p:(-_score(p, token), str(p)))
-    report['places'].append({'where':'phone','count':len(local),'paths':[str(p) for p in local[:4]]})
-    packages=[];device_error=''
-    if device:
+    def phone():
+        found=find_local(token, search_roots(workspace, config))
+        found.sort(key=lambda p:(-_score(p, token), str(p)))
+        return found
+    def installed():
+        if not device:return [], ''
         try:
             listed=device(['pm','list','packages',token])
-            packages=parse_packages(listed.get('output') if isinstance(listed,dict) else str(listed), token)
+            return parse_packages(listed.get('output') if isinstance(listed,dict) else str(listed), token), ''
         except (OSError,ValueError,TypeError) as exc:
-            device_error=str(exc)[:240]
+            return [], str(exc)[:240]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        local_f=pool.submit(phone)
+        device_f=pool.submit(installed)
+        git_f=pool.submit(github_repos, token, run)
+        cloud_f=pool.submit(cloudflare_projects, token, config, http_get)
+        local=local_f.result()
+        packages,device_error=device_f.result()
+        github=git_f.result()
+        cloud=cloud_f.result()
+    report['places'].append({'where':'phone','count':len(local),'paths':[str(p) for p in local[:4]]})
     report['places'].append({'where':'installed','packages':packages[:4],'error':device_error})
     if len(packages)==1:report['package']=packages[0]
-    github=github_repos(token, run)
     report['places'].append({'where':'github','available':github.get('available',False),'repos':[r['full_name'] for r in github.get('repos',[])],'error':github.get('error','')})
-    cloud=cloudflare_projects(token, config, http_get)
     report['places'].append({'where':'cloudflare','configured':cloud.get('configured',False),'projects':[p['name'] for p in cloud.get('projects',[])],'error':cloud.get('error','')})
     exact_local=[p for p in local if _score(p, token)>=2]
     exact_git=_exact_repos(github.get('repos',[]), token)
