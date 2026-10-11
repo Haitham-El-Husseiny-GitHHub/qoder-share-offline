@@ -78,7 +78,7 @@ public final class UnifiedCodingActivity extends Activity {
         menu.setOnClickListener(v->menu(v)); root.addView(header);
         LinearLayout navigation=new LinearLayout(this);
         Button offline=button("Offline");offline.setEnabled(false);addWeighted(navigation,offline);
-        Button cloud=button("Cloud");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.mobile.MainActivity")));addWeighted(navigation,cloud);
+        Button cloud=button("Cloud");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.CloudCatalogActivity")));addWeighted(navigation,cloud);
         Button openCode=button("OpenCode");openCode.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.OpenCodeActivity")));addWeighted(navigation,openCode);
         root.addView(navigation);
 
@@ -163,7 +163,7 @@ public final class UnifiedCodingActivity extends Activity {
             else if(s.equals("Clear current chat"))manageSession("clear");
             else if(s.equals("Delete session"))new AlertDialog.Builder(this).setTitle("Delete session?").setMessage("Delete this session's messages and operation logs. Project files are retained.").setPositiveButton("Delete",(d,w)->manageSession("delete")).setNegativeButton("Cancel",null).show();
             else if(s.equals("Export session"))exportSession();
-            else startActivity(new Intent().setClassName(this,"com.qoder.mobile.MainActivity"));return true;});p.show();
+            else startActivity(new Intent().setClassName(this,"com.qoder.share.CloudCatalogActivity"));return true;});p.show();
     }
     private void modelInfo(){
         if(runningCount>0)return;

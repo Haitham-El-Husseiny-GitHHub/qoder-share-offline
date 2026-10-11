@@ -263,18 +263,26 @@ class Handler(BaseHTTPRequestHandler):
             return self.answer(202,SESSIONS.launch(sid))
         except (ValueError,TypeError,AttributeError,OSError) as exc:return self.answer(409,{'error':str(exc)})
     def do_GET(self):
-        if not self.valid(navigation=self.path in ("/","/coding","/chat","/opencode")): return self.answer(403,{"error":"Local origin required"})
+        if not self.valid(navigation=self.path in ("/","/coding","/chat","/opencode","/cloud")): return self.answer(403,{"error":"Local origin required"})
         parsed=urllib.parse.urlsplit(self.path)
         if parsed.path in ('/api/sessions','/api/session','/api/session/export'):
             try:
                 data=SESSIONS.listing() if parsed.path=='/api/sessions' else SESSIONS.snapshot(urllib.parse.parse_qs(parsed.query).get('session',[''])[0])
                 return self.answer(200,data)
             except ValueError as exc:return self.answer(404,{'error':str(exc)})
+        if parsed.path.startswith('/api/qoder-cloud/'):
+            import qoder_cloud
+            query=urllib.parse.parse_qs(parsed.query)
+            try:
+                if parsed.path.endswith('/models'):return self.answer(200,qoder_cloud.catalog(query.get('refresh',[''])[0]=='1'))
+                if parsed.path.endswith('/job'):return self.answer(200,qoder_cloud.snapshot(query.get('id',[''])[0]))
+                raise ValueError('Unknown cloud read route.')
+            except Exception as exc:return self.answer(400,{'error':str(exc)[:2000]})
         if parsed.path=='/api/opencode':
             from opencode_bridge import get
             try:return self.answer(200,get(urllib.parse.parse_qs(parsed.query)))
             except Exception as exc:return self.answer(400,{'error':str(exc)[:2000]})
-        files={"/":("coding.html","text/html; charset=utf-8"),"/chat":("index.html","text/html; charset=utf-8"),"/app.js":("app.js","text/javascript; charset=utf-8"),"/coding":("coding.html","text/html; charset=utf-8"),"/coding.js":("coding.js","text/javascript; charset=utf-8"),"/opencode":("opencode.html","text/html; charset=utf-8"),"/opencode.js":("opencode.js","text/javascript; charset=utf-8")}
+        files={"/":("coding.html","text/html; charset=utf-8"),"/chat":("index.html","text/html; charset=utf-8"),"/app.js":("app.js","text/javascript; charset=utf-8"),"/coding":("coding.html","text/html; charset=utf-8"),"/coding.js":("coding.js","text/javascript; charset=utf-8"),"/opencode":("opencode.html","text/html; charset=utf-8"),"/opencode.js":("opencode.js","text/javascript; charset=utf-8"),"/cloud":("cloud.html","text/html; charset=utf-8"),"/cloud.js":("cloud.js","text/javascript; charset=utf-8")}
         if self.path in files:
             name,mime=files[self.path]
             return self.answer(200,(ROOT/name).read_bytes(),mime)
@@ -294,6 +302,16 @@ class Handler(BaseHTTPRequestHandler):
         code,body=self.upstream(paths[self.path]);self.answer(code,body)
     def do_POST(self):
         if not self.valid():return self.answer(403,{"error":"Local origin required"})
+        if self.path.startswith('/api/qoder-cloud/'):
+            import qoder_cloud
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=30000:raise ValueError('Invalid request size.')
+                data=json.loads(self.rfile.read(length))
+                if self.path.endswith('/run'):return self.answer(202,qoder_cloud.run(data))
+                if self.path.endswith('/stop'):return self.answer(200,qoder_cloud.stop(data.get('id','')))
+                raise ValueError('Unknown cloud action.')
+            except Exception as exc:return self.answer(400,{'error':str(exc)[:2000]})
         if self.path=='/api/opencode':
             from opencode_bridge import post
             try:
