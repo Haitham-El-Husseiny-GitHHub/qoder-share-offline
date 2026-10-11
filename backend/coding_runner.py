@@ -5,7 +5,7 @@ from pathlib import Path
 import engineering_tools
 from bridge import status as bridge_status
 from device_tools import execute as device_execute
-from runtime_config import ROOT,RUNTIME,MODELS,KEY_FILE,ensure,request,stream_completion,CODING_ROUTES
+from runtime_config import ROOT,RUNTIME,MODELS,KEY_FILE,ensure,request,stream_completion,CODING_ROUTES,fit_messages
 JOBS=ROOT/'jobs'
 MODEL=MODELS['phone-code'][0]
 class Cancelled(Exception):pass
@@ -259,6 +259,9 @@ def complete(messages,tools,model=MODEL,progress=None):
     prompt=[dict(m) for m in messages]
     guide=json.dumps([{'name':t['name'],'description':t['description'],'inputs':{k:(v.get('enum') or v.get('type')) for k,v in t['parameters']['properties'].items()},'required':t['parameters']['required']} for t in tools],separators=(',',':'))
     prompt[0]['content']=prompt[0]['content']+'\nTools: '+guide
+    slots=request('/slots')
+    context=min(slot['n_ctx'] for slot in slots)
+    prompt=fit_messages(prompt,context)
     content=stream_completion({'model':model,'messages':prompt,'temperature':0,'max_tokens':384,'response_format':{'type':'json_schema','json_schema':{'name':'coding_turn','strict':True,'schema':schema}}},progress=progress,timeout=180)
     parsed=json.loads(content)
     if not isinstance(parsed,dict) or not isinstance(parsed.get('tool_calls'),list) or not isinstance(parsed.get('content'),str):raise ValueError('Model returned an invalid coding turn.')
@@ -326,10 +329,8 @@ def run(job):
         return result
     def trim_messages():
         nonlocal messages
-        while len(messages)>4 and sum(len(json.dumps(m)) for m in messages)>8000:
+        while len(messages)>66:
             del messages[2:4]
-        if len(messages)>3:
-            for m in messages[2:-2]:m['content']=m['content'][:1000]
     def record(name,args,result):
         state['evidence'].append({'tool':name,'arguments':redact(json.dumps(args)),'result':result,'at':time.time()})
         state['evidence']=state['evidence'][-100:]

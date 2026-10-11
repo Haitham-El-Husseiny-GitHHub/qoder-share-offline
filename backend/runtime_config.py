@@ -12,14 +12,16 @@ MODELS={
 CODING_ROUTES={'coding':'phone-code','omni':'omni-code'}
 EXPECTED={'phone-code':1929903488,'omni-code':5629109600}
 LABELS={'phone-code':'Qwen Coder 3B','omni-code':'OmniCoder 9B'}
-CONTEXTS={'phone-code':4096,'omni-code':2048}
 import json
 EXTRA_MODELS=json.loads((ROOT/'extra_models.json').read_text())
 for entry in EXTRA_MODELS:
     route=entry['route']
     MODELS[route]=(entry['id'],ROOT/'models'/entry['file'])
     CODING_ROUTES[entry['mode']]=route
-    EXPECTED[route]=entry['size'];LABELS[route]=entry['name'];CONTEXTS[route]=2048
+    EXPECTED[route]=entry['size'];LABELS[route]=entry['name']
+def context_plan(route):
+    from context_policy import plan,reclaimable_runtime
+    return plan(MODELS[route][1],reclaim_bytes=reclaimable_runtime(RUNTIME/'server.json'))
 def model_catalog():
     import json
     try: total=int(next(l.split()[1] for l in Path('/proc/meminfo').read_text().splitlines() if l.startswith('MemTotal:')))*1024
@@ -40,7 +42,15 @@ def model_catalog():
         reason='Ready to load' if installed else 'Download incomplete'
         if installed and route=='omni-code':reason+=' · slower CPU model'
         if not memory_ok:reason=('' if installed else 'Download incomplete; ')+'Insufficient phone RAM; requires another device'
-        result.append({'id':model,'name':LABELS[route],'mode':mode,'route':route,'installed':installed,'selectable':installed and memory_ok,'reason':reason,'bytes':actual or partial,'expected_bytes':size,'qoder_credits':0,'context_window':CONTEXTS[route]})
+        limits={}
+        if installed:
+            try:
+                limits=context_plan(route)
+                if not limits['fits']: reason='Free phone RAM is too low; close other apps before loading.'
+                if state.get('route')==route and state.get('context_window'):limits['context_window']=state['context_window']
+                if limits['fits']:reason='Ready to load · context %s tokens'%format(limits['context_window'],',')
+            except (OSError,ValueError) as exc:limits={'fits':False};reason=str(exc)
+        result.append({'id':model,'name':LABELS[route],'mode':mode,'route':route,'installed':installed,'selectable':installed and memory_ok and limits.get('fits',True),'reason':reason,'bytes':actual or partial,'expected_bytes':size,'qoder_credits':0,**limits})
     return result
 def ensure():
     import os,secrets
@@ -58,6 +68,18 @@ def request(path,body=None,timeout=10):
     req=urllib.request.Request(UPSTREAM+path,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+KEY_FILE.read_text().strip(),'Content-Type':'application/json'})
     opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(req,timeout=timeout) as response:return json.loads(response.read(2_000_000))
+
+def fit_messages(messages,context_window,reply_tokens=384):
+    """Use the loaded model's template/tokenizer, retaining policy, task and newest evidence."""
+    prompt=[dict(message) for message in messages]
+    budget=context_window-reply_tokens-32
+    while True:
+        rendered=request('/apply-template',{'messages':prompt},timeout=30)['prompt']
+        tokens=request('/tokenize',{'content':rendered,'add_special':True,'parse_special':True},timeout=30)['tokens']
+        if len(tokens)<=budget:return prompt
+        if len(prompt)<=4:
+            raise ValueError('Task and latest evidence need %d tokens; this model has %d available after reply reserve. Reduce the task or use a model with more context.'%(len(tokens),budget))
+        del prompt[2:4]
 
 def stream_completion(body,progress=None,timeout=600):
     """Read only public completion content; never expose reasoning fields."""

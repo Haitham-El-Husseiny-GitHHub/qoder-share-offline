@@ -12,6 +12,7 @@ ROOT_FILES=['WORKBENCH-DESIGN.md','README.md','ENGINEERING_TOOLS.md','VERIFICATI
 EXTENSIONS={'.py','.json','.md','.sh','.js','.html','.java','.yaml','.yml'}
 ROOT_FILES.append('Project/QODER-WORKER-POLICY.md')
 ROOT_FILES.append('Project/ATTACHMENTS.md')
+ROOT_FILES.append('Project/MODEL-CONTEXT.md')
 
 
 def sync_worker_policy():

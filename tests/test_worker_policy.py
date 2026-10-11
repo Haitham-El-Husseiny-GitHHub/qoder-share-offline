@@ -51,7 +51,8 @@ class WorkerPolicyTests(unittest.TestCase):
         def stream(payload,**kw):
             captured.append(payload)
             return json.dumps({'tool_calls':[{'name':'read_file','arguments':{'path':'ledger.py'}}],'content':'Here is my plan'})
-        with patch.object(runner,'request',return_value={'data':[{'id':'test'}]}),patch.object(runner,'stream_completion',side_effect=stream):
+        def lookup(path):return [{'n_ctx':32768}] if path=='/slots' else {'data':[{'id':'test'}]}
+        with patch.object(runner,'request',side_effect=lookup),patch.object(runner,'fit_messages',side_effect=lambda messages,context:messages),patch.object(runner,'stream_completion',side_effect=stream):
             answer=runner.complete([{'role':'system','content':runner.WORKER_POLICY}],runner.TOOLS,'test')
         self.assertEqual(answer['content'],'')
         self.assertIn(runner.WORKER_POLICY,captured[0]['messages'][0]['content'])
