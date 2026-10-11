@@ -10,6 +10,8 @@ See [installation instructions](INSTALLATION-BUILD-83.md) and
 The repository now contains the complete current backend, offline installer,
 tool provisioning, tests, bundle builder, and Android installer source.
 Private keys, model files, sessions and personal device state are excluded.
+The Shizuku bridge hotfix checks identity output from both captured streams.
+For installation, use both the full tools ZIP and the current small companion ZIP.
 
 Run source checks with:
 

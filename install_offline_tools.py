@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Install downloaded Android tools without using internet repositories."""
-import argparse, hashlib, json, lzma, os, re, shutil, subprocess, tarfile, tempfile, time, zipfile
+import argparse, hashlib, json, lzma, os, re, shutil, subprocess, tarfile, tempfile, time, zipfile, sys
 from pathlib import Path
 
 COMMANDS = {
@@ -294,13 +294,18 @@ def provision(cache,target,args):
                         'pending':result['pending']})
     return result
 
+def termux_prefix():
+    return os.environ.get('PREFIX') or sys.base_prefix
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--cache',type=Path,default=Path(__file__).resolve().parent);p.add_argument('--check',action='store_true');p.add_argument('--android-sdk',action='store_true');p.add_argument('--bundle-sha256',default=None);p.add_argument('--companion',type=Path);a=p.parse_args()
     cache=a.cache.resolve();verify(cache)
     if a.check:return
-    if os.uname().machine!='aarch64' or not os.environ.get('PREFIX','').startswith('/data/data/com.termux/'):
+    prefix=termux_prefix()
+    if os.uname().machine!='aarch64' or not prefix.startswith('/data/data/com.termux/'):
         raise ValueError('Install inside official ARM64 Termux. This installer does not install apps on a connected phone.')
-    os.environ['TMPDIR']=str(Path(os.environ['PREFIX'])/'tmp')
+    os.environ['PREFIX']=prefix
+    os.environ['TMPDIR']=str(Path(prefix)/'tmp')
     os.environ.setdefault('ANDROID_DATA','/data');os.environ.setdefault('ANDROID_ROOT','/system')
     target=Path.home()/'qoder-selfhost'
     # A first full install may create qoder-selfhost. When it already exists,

@@ -5,6 +5,12 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import install_offline_tools as offline
 
 class InstallerRegressionTests(unittest.TestCase):
+    def test_remote_termux_recovers_missing_prefix(self):
+        with patch.dict(offline.os.environ,{},clear=True),patch.object(offline.sys,'base_prefix','/data/data/com.termux/files/usr'):
+            self.assertEqual(offline.termux_prefix(),'/data/data/com.termux/files/usr')
+    def test_foreign_python_is_not_inferred_as_termux(self):
+        with patch.dict(offline.os.environ,{},clear=True),patch.object(offline.sys,'base_prefix','/usr/local'):
+            self.assertFalse(offline.termux_prefix().startswith('/data/data/com.termux/'))
     def test_apkeditor_known_version_exit_only(self):
         for argv,code,text,expected in [(['java','-jar','x.jar','-v'],2,'APKEditor version 1.4.9, ARSCLib version 1.3.9',True),(['java','-jar','x.jar','-v'],2,'Unable to load jar',False),(['java','-jar','x.jar','info'],2,'APKEditor version 1.4.9, ARSCLib version 1.3.9',False),(['java','-jar','x.jar','-v'],1,'APKEditor version 1.4.9, ARSCLib version 1.3.9',False)]:
             with self.subTest(argv=argv,code=code,text=text),patch.object(offline.subprocess,'run',return_value=subprocess.CompletedProcess(argv,code,text,'')):
