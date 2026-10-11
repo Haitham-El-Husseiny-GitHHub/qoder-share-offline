@@ -8,7 +8,7 @@ works on every Android release. Acceptance requires observed device evidence.
 
 | Defect | Correction / implementation boundary |
 | --- | --- |
-| Installed app intent lost when unrelated project tests exist | Explicit installed-app intent takes the device route; explicit source filenames retain the source route. Implemented with regression tests. |
+| Crash words override an open project | An open project remains on the source route; device diagnosis is selected only without a project. Source selection happens before routing. Implemented with regression tests. |
 | Typo treated as executable | Device workflow exposes package/logcat tools and instructs package discovery before action. Bounded local source/package discovery and prompt guidance implemented; deterministic fuzzy label-to-package resolution remains future work. |
 | Green reproduction card without reproduction | Baseline card reports failure unless a non-prerequisite failing check was observed. Implemented. A failing test alone may still be unrelated to the requested bug; inspect its diagnostics. |
 | Rejected command repeated indefinitely | Two identical failures at the same source revision stop the job as blocked. Implemented. Semantic detection of differently phrased repetitions remains future work. |
@@ -25,7 +25,7 @@ works on every Android release. Acceptance requires observed device evidence.
 | Every workflow requires every listed tool | Required outcomes govern completion; choose alternatives and smallest toolset, distinguish optional tools from blockers. |
 | APK decompilation assumed compilable Java | JADX output supports analysis; smali/resources or original source are the actual rebuild inputs. |
 | Native/security desktop tools assumed local Android | Ghidra, Semgrep, CodeQL, MobSF are excluded from the current Android scope. Report unsupported; no automatic substitute scan claims. |
-| Logcat or successful launch proves functionality | Crash diagnosis and functional acceptance are separate. Current functional gate supports explicit instrumentation; manual observed acceptance needs a dedicated evidence interface. |
+| Logcat or successful launch proves functionality | Crash diagnosis and functional acceptance are separate. Device diagnosis requires observed package/log inspection, not a claim of repair. Functional repair is a distinct explicit scope. |
 | Resume can blindly repeat external action | Persist interrupted operation and inspect state before retry. Installed package operations need idempotency/reconciliation; process termination cannot roll back device actions. |
 
 ## Three layers
@@ -143,12 +143,11 @@ without reconciling its PID and pending step. Resume does not undo Android actio
 
 ## Internal routing and execution
 
-Inspect target intent and project markers before selecting tools. Explicit APK
-modification, installed-app diagnostics and explicit source-file edits must not
-be overridden by unrelated files. Source is preferred only when it belongs to
-the requested target. Bounded discovery searches named local project subdirectories; confirmed matching
+Inspect target intent and project markers before selecting tools. Explicit APK modification wins first. An already open project is the source
+target even when the objective mentions a crash; API words never override a
+crash without source. Source discovery/disambiguation happens before routing. Bounded discovery searches named local project subdirectories; confirmed matching
 source can select source repair. Explicit target identity/disambiguation remains
-limited. Unrelated source must not override an installed-app task.
+limited. The user-selected open project has priority over a crash word.
 
 For an app label with a typo, discover installed package candidates, inspect
 metadata, and resolve one package; request clarification if ambiguous. Never
@@ -166,8 +165,9 @@ Choose the smallest sufficient tools and outcomes, then:
 4. Run one adapter operation, inspect its structured result, persist it, update UI.
 5. Revise strategy from evidence; stop after two identical failures or a hard
    prerequisite blocker. No repeated unsupported executable guessing.
-6. After an edit, automatically run planned checks; stop immediately when the
-   requested outcome is verified at the current revision. Do not equate a
+6. The runner owns verify_goal; it is absent from the model tool list. After an
+   edit, automatically run planned checks and stop immediately when current
+   evidence satisfies the role. Do not equate a
    command's zero exit code with the product goal.
 7. Export artifacts/diff and report missing evidence accurately.
 
@@ -250,7 +250,7 @@ UI should show operation name and command/tool, observed duration/output,
 prerequisites and permissions, diagnostics, artifact links/hashes, missing and
 passed evidence, source recovery path, and resumable status. Use step progress,
 not invented percentages. A green operation card means that operation passed,
-not that the whole requested outcome passed. New APK-side rendering features
+not that an inspected crash or security finding was repaired. New APK-side rendering features
 are outside this backend hotfix and require original-key signed UI updates.
 
 ## Representative end-to-end workflows
@@ -279,3 +279,51 @@ Remaining gaps are stated above, particularly deterministic typo/package lookup,
 full per-operation schemas/probes, source apply/export UI, manual functional
 evidence, true zero-egress enforcement, atomic update rollback and original-key
 signed installer/UI binaries. Do not present these as completed implementation.
+
+
+## Canonical deterministic router contract (current)
+
+select(root, objective, profile, inventory, config) performs no discovery,
+network request, tool execution or patching. It reads project markers at the
+already selected root and returns exactly workflow, adapters, required, checks,
+and reason. execution_plan adds runner bookkeeping separately; it does not
+change the selected role. Source lookup, nested project selection and source
+briefing live in source_lookup.py and run before model inference.
+
+First match wins: explicit APK modification; text edit; security/AUDIT;
+native analysis without a source-fix request; API without project or crash;
+device without project; APK inspection without project; read-only inspection;
+source fix; source build when a project exists. No project and no diagnostic
+target blocks with a request to select a project. An ambiguous preselected
+source report emits device with reason "ambiguous source".
+
+An open project always takes the source route when a crash is reported, unless
+an earlier explicit role applies. Source_fix requires reproduction, tests and
+change, plus build only if a build check exists. Source_build requires declared
+checks and never invents a required edit. Builders require marker files; words
+like Android, Java or API cannot invent a Gradle, HTTP or APK dependency.
+
+Device exposes bridge_status/device_argv/import_apk and ADB/Rish adapters.
+It completes only after actual package/log inspection. That is diagnosis,
+not a repaired app. A missing authorized bridge blocks before model inference.
+No invented Shizuku start command is executed. Explicit authorized ADB remains
+an alternative to Rish when available.
+
+Text_edit exposes read_file/edit_patch, and requires a changed file read back
+at the recorded current checksum. Inspection exposes only read_file/code_search/
+git_diff and is read-only. APK inspection requires decoded/decompiled outputs
+actually existing on disk; ordinary file reading does not satisfy it. APK
+modification requires rebuilt output, adding signature, install and functional
+gates only when the objective explicitly requests them.
+
+API requires one expectation-checked response; prior API failure is unnecessary
+for a diagnostic request. Security on Termux exposes ast-grep structural search
+and saves a scoped JSON scan report; a finding is not repair, and this is not a
+full Semgrep/CodeQL scan. Native analysis requires an observed stack, instrumented
+observation or harness run. No Ghidra/Semgrep/CodeQL/MobSF is selected on Termux.
+
+The model can request at most two operations per turn and never sees verify_goal.
+Each operation remains sequential. Repeated failures stop after two identical
+failures; evidence, diagnostics and resume state remain persisted. Remaining
+limitations from the previous sections (package-label matching, probes, update
+rollback and OS network isolation) still apply.

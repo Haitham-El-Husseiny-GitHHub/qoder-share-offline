@@ -23,12 +23,19 @@ INPUT_HINTS = {
 
 def tools(base_tools, plan, readonly=False):
     from coding_runner import tool
-    names = {'list_files', 'read_file', 'code_search', 'git_diff'}
-    if any(n in plan['adapters'] for n in ('apktool','jadx','apkeditor','mobsf')):names.add('apk_tools')
-    if any(n in plan['adapters'] for n in ('adb','rish')):names.add('bridge_status')
-    if not readonly:
-        names.update({'write_file', 'edit_patch', 'run_argv', 'diagnose'})
-        if any(n in plan['adapters'] for n in ('adb','rish')):names.update({'device_argv','import_apk'})
+    role=plan['workflow']
+    names={
+        'source_fix':{'read_file','list_files','code_search','edit_patch','run_argv','diagnose','git_diff'},
+        'source_build':{'read_file','list_files','code_search','write_file','edit_patch','run_argv','diagnose','git_diff'},
+        'text_edit':{'read_file','edit_patch'},
+        'device':{'bridge_status','device_argv','import_apk'},
+        'apk_inspect':{'import_apk','bridge_status','read_file'},
+        'apk_modify':{'import_apk','bridge_status','read_file','list_files','code_search','edit_patch','apk_tools'},
+        'api':set(), 'security':{'read_file','code_search'},
+        'native':{'read_file','code_search'},
+        'inspect':{'read_file','code_search','git_diff'},
+    }[role]
+    if readonly:names-= {'write_file','edit_patch','run_argv','diagnose','device_argv','import_apk'}
     chosen = [t for t in base_tools if t['name'] in names]
     selected = plan['adapters']
     descriptions = '; '.join(n + ': ' + '/'.join(CATALOG[n]['operations']) + ', inputs ' + INPUT_HINTS[n] for n in selected)
@@ -41,9 +48,7 @@ def tools(base_tools, plan, readonly=False):
                        'inputs': {'type': 'object', 'properties': input_fields, 'additionalProperties': False},
                        'timeout': {'type': 'integer'}}, ['tool', 'operation', 'inputs']))
     chosen.append(tool('tool_capabilities', 'Inspect observed tools, access and prerequisites for this workflow.', {}, []))
-    chosen.append(tool('verify_goal', 'Run planned checks and report missing completion evidence. A task is complete only when verified=true.',
-                       {'run_checks': {'type': 'boolean'}}, []))
-    if not readonly:
+    if not readonly and role in {'source_fix','source_build','apk_modify'}:
         chosen.append(tool('unified_patch', 'Preview/apply a unified diff. Existing paths require their observed SHA-256 map.',
                           {'patch': {'type': 'string'}, 'expected_sha256': {'type': 'object', 'additionalProperties': {'type': 'string'}},
                            'preview': {'type': 'boolean'}}, ['patch', 'expected_sha256']))
@@ -67,6 +72,9 @@ class Runtime:
         if name == 'tool_adapter':
             if args['tool'] not in self.plan['adapters']:
                 raise ValueError('Use an adapter selected for this workflow. Inspect tool_capabilities.')
+            if self.plan['workflow']=='apk_inspect' and args['operation'] not in {'decode','decompile','disassemble'}:raise ValueError('APK inspection permits decode/decompile/disassemble only.')
+            if self.plan['workflow']=='security' and args['operation']!='search':raise ValueError('Security review runs searches; findings are not repairs.')
+            if self.plan['workflow']=='device' and args['operation']=='install':raise ValueError('Device diagnosis does not install APKs; request APK modification explicitly.')
             result = tool_adapters.invoke(self.ws, args['tool'], args['operation'], args.get('inputs', {}), args.get('timeout', CATALOG[args['tool']]['timeout_seconds']), self.config)
             return result
         if name == 'verify_goal':
@@ -122,11 +130,14 @@ class Runtime:
                 self.journal.check('inspection', {'success': True, 'exit_code': 0})
             return result
         okay = not result.get('error') and result.get('success', result.get('exit_code', 0) == 0)
-        if name in {'write_file','edit_patch'} and okay and self.plan['workflow']=='text_edit' and Path(args['path']).suffix.lower() in {'.md','.txt','.rst'}:
-            self.journal.check('text_validation',{'success':True,'exit_code':0})
         if name in {'read_file', 'code_search', 'git_diff'} and okay:
             self.journal.check('inspection', {'success': True, 'exit_code': 0})
-            if name=='read_file':self.journal.data['file_hashes'][result['path']]=result['sha256'];self.journal.save()
+            if name=='read_file':
+                self.journal.data['file_hashes'][result['path']]=result['sha256'];self.journal.save()
+                if self.plan['workflow']=='text_edit' and any(p['path']==result['path'] and p.get('after_sha256')==result['sha256'] and p.get('before_sha256')!=p.get('after_sha256') for p in self.journal.data['patches']):
+                    self.journal.check('text_validation',{'success':True,'exit_code':0})
+        if name == 'apk_tools' and args.get('action') in {'decode','decompile'} and okay and result.get('output_path') and self.ws.file(result['output_path']).exists():
+            self.journal.check('apk_inspection',result)
         if name == 'apk_tools' and args.get('action') in {'info', 'decode', 'decompile'} and okay:
             self.journal.check('inspection', {'success': True, 'exit_code': 0})
         if name == 'apk_tools' and args.get('action') == 'rebuild' and okay and result.get('artifact_exists'):
@@ -153,6 +164,12 @@ class Runtime:
             self.journal.check('apk_rebuild', result)
         if adapter in {'jadx', 'apktool', 'apkeditor', 'baksmali'} and operation in {'decompile', 'decode', 'disassemble', 'merge'} and okay:
             self.journal.check('inspection', result)
+        if adapter in {'jadx','apktool','apkeditor','baksmali'} and operation in {'decode','decompile','disassemble'} and okay and any(a.get('path') and self.ws.file(a['path']).exists() for a in result.get('artifacts',[])):
+            self.journal.check('apk_inspection',result)
+        if adapter=='ast_grep' and operation=='search' and self.plan['workflow']=='security' and okay and result.get('artifacts'):
+            self.journal.check('security_scan',result)
+        if adapter=='debugger' and operation=='backtrace' and okay and re.search(r'(?m)^#\d+\s',result.get('output','')):
+            self.journal.check('runtime_observation',result,result.get('argv'))
         signature=result.get('signature_verification',result)
         signature_verified=bool(signature.get('success') and signature.get('certificates_sha256'))
         if adapter == 'apksigner' and okay and operation in {'sign','verify'} and signature_verified:
@@ -194,5 +211,5 @@ class Runtime:
                 'Recovery workspace: ' + str(self.ws.root) + '. Use relative paths. ' +
                 'For installed-app tasks, a misspelled app label is not an executable. Use device_argv pm list packages -3, then inspect candidate packages; ask if the match is ambiguous. Use device_argv for logcat and package operations. ' +
                 'After a rejected command, read its error and select a different supported action. ' +
-                'Call verify_goal after changes. For repairs the failing test must be observed before editing and the same test must pass afterward. ' +
+                'The runner verifies completion after edits and at the end. For repairs the failing test must be observed before editing and the same test must pass afterward. ' +
                 'The worker rejects completion without the required observed checks. Deliver artifact paths and remaining prerequisites accurately.')

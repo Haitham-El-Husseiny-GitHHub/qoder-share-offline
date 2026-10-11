@@ -22,16 +22,15 @@ class RoutingRegressionTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         (self.root/'test_ledger.py').write_text('import unittest\n')
     def tearDown(self):self.temp.cleanup()
-    def test_installed_app_with_typo_beats_unrelated_source(self):
-        for text in ['prettup app installed but not opening up. shuts down as soon as it runs up','PrettyUp app crashes','Diagnose an installed app']:
-            p=task_router.select(self.root,text,'BUILD',inventory(),{})
-            self.assertEqual(p['workflow'],'device');self.assertFalse(p['mutating']);self.assertFalse(p['source_preferred']);self.assertEqual(p['checks'],[])
-    def test_unrelated_broken_project_does_not_block_device(self):
+    def test_open_project_is_never_overridden_by_crash(self):
+        for text in ['prettup app installed but not opening up. fix it','PrettyUp app crashes; fix it','Diagnose an installed app; repair bug']:
+            p=task_router.execution_plan(self.root,text,'BUILD',inventory(),{})
+            self.assertEqual(p['workflow'],'source_fix');self.assertTrue(p['source_preferred'])
+    def test_malformed_project_is_reported(self):
         (self.root/'package.json').write_text('{broken')
-        p=task_router.select(self.root,'Prettyup app installed with typo in name; crashes','BUILD',inventory(),{})
-        self.assertEqual(p['workflow'],'device')
+        with self.assertRaises(json.JSONDecodeError):task_router.select(self.root,'Prettyup app crashes','BUILD',inventory(),{})
     def test_explicit_source_target_remains_source_repair(self):
-        p=task_router.select(self.root,'Fix typo in ledger.py only; unittest is failing','BUILD',inventory(),{})
+        p=task_router.execution_plan(self.root,'Fix ledger.py only; unittest is failing','BUILD',inventory(),{})
         self.assertEqual(p['workflow'],'source_fix');self.assertNotIn('ui',p['adapters'])
     def test_prerequisite_failure_is_not_bug_reproduction(self):
         for code in [124,126,127]:
@@ -73,10 +72,12 @@ class WorkerRegressionTests(unittest.TestCase):
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Done'}):state=runner.run(job(self.project))
         baseline=[a for a in state['activity'] if a['title']=='Checking the failure baseline']
         self.assertEqual(baseline[0]['status'],'failed');self.assertNotEqual(state['status'],'completed')
-    def test_device_job_does_not_snapshot_unrelated_source(self):
-        with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Unable to verify'}),patch.object(runner,'recovery_workspace',create=True):
-            state=runner.run(job(self.project,objective='prettup app installed but not opening up',profile='BUILD'))
-        self.assertEqual(state['workflow'],'device');self.assertEqual(state['workspace'],str(self.project));self.assertEqual(state['recovery']['mode'],'read_only')
+    def test_device_job_does_not_snapshot_when_no_project(self):
+        empty=self.root/'empty';empty.mkdir()
+        with patch.object(runner,'complete',side_effect=AssertionError('must stop before model')):
+            state=runner.run(job(empty,objective='prettup app installed but not opening up',profile='BUILD'))
+        self.assertEqual(state['workflow'],'device');self.assertEqual(state['workspace'],str(empty));self.assertEqual(state['recovery']['mode'],'read_only');self.assertEqual(state['status'],'blocked')
+
 
 
 class OfflineGuardTests(unittest.TestCase):

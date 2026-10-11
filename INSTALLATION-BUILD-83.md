@@ -56,3 +56,8 @@ handling, baseline reporting, stale verification reuse, signature evidence,
 and offline fetch guards. WORKBENCH-DESIGN.md describes the corrected workflow
 and remaining implementation gaps. Offline source discovery stays on the phone;
 GitHub/Cloudflare discovery requires explicitly online configuration.
+
+The current router uses the deterministic first-match contract documented in
+WORKBENCH-DESIGN.md. An open project takes priority over crash wording.
+Source lookup runs separately; verify_goal belongs to the runner and is not
+exposed to the model. Device inspection and security findings do not claim fixes.

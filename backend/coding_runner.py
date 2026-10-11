@@ -62,6 +62,8 @@ class Workspace:
         if name in {'code_search','edit_patch','git_diff','diagnose','apk_tools','import_apk'}:return engineering_tools.invoke(self,name,args,redact)
         if name=='bridge_status':return bridge_status()
         if name=='device_argv':
+            argv=args['argv']
+            if self.runtime and self.runtime.plan['workflow']=='device' and (argv and argv[0]=='pm' and len(argv)>1 and argv[1] in {'install','install-create','install-write','install-commit','uninstall','clear','grant','revoke'}):raise ValueError('Device diagnosis does not alter packages or app data.')
             if self.readonly:raise ValueError('Device operations require BUILD mode.')
             return device_execute(args['argv'],self.progress,self.cancel,redact)
         if name=='list_files':
@@ -190,7 +192,7 @@ def run(job):
     from job_journal import Journal,recovery_workspace
     from tool_catalog import discover,load_config,public_capabilities
     import task_router
-    from task_router import select
+    from task_router import execution_plan
     import source_lookup
     from router_runtime import Runtime,tools as selected_tools
     job=dict(job);job.setdefault('id',uuid.uuid4().hex)
@@ -265,7 +267,7 @@ def run(job):
             lookup=None
             if job.get('resume_from'):workspace.root=Path(journal.data['workspace']).resolve(strict=True)
             else:
-                if source_lookup.app_token(job['objective']):
+                if source_lookup.app_token(job['objective']) and not task_router.project(workspace.root)['source']:
                     end({'success':True,'output':'Tool access checked.'})
                     begin('prepare','Locating app source',source_lookup.app_token(job['objective']))
                     def device_query(argv):return workspace.invoke('device_argv',{'argv':argv})
@@ -277,14 +279,14 @@ def run(job):
                 located=None
                 if not lookup or not lookup.get('root'):
                     if not task_router.device_intent(job['objective']):
-                        located=task_router.locate_project(workspace.root,job['objective'])
+                        located=source_lookup.locate_project(workspace.root,job['objective'])
                     else:
                         token=source_lookup.app_token(job['objective'])
                         matches=source_lookup.find_local(token,[workspace.root]) if token else []
                         if len(matches)==1:located=matches[0]
                 if located and located.resolve()!=workspace.root.resolve():workspace.root=located.resolve()
-            source_confirmed=bool(lookup and lookup.get('root')) or bool(located if not job.get('resume_from') else False)
-            plan=journal.data.get('plan') or select(workspace.root,job['objective'],job['profile'],inventory,{**config,'target_source_confirmed':source_confirmed})
+            plan=journal.data.get('plan') or execution_plan(workspace.root,job['objective'],job['profile'],inventory,{**config,'ambiguous_source':bool(lookup and lookup.get('ambiguous') and not lookup.get('root'))})
+            workspace.readonly=plan.get('readonly',workspace.readonly)
             if plan['mutating'] or any(c['kind'] in plan['required'] for c in plan['checks']):
                 end({'success':True,'workflow':plan['workflow']})
                 begin('recovery','Creating source recovery point')
@@ -311,13 +313,19 @@ def run(job):
             end({'success':True,'workflow':plan['workflow'],'workspace':str(workspace.root),'recovery':journal.data['recovery']})
             def observed_failure(checks):
                 return any(c.get('kind') in {'tests','build'} and c.get('exit_code') not in (None,0,124,126,127) and not c.get('timeout') and not c.get('missing_prerequisite') for c in checks)
+            if plan['workflow']=='device' and not any(inventory['access'].get(n)=='available' for n in ('rish','adb')):
+                state.update(status='blocked',error='Shizuku/Rish is disconnected and no authorized ADB connection is available.',result='Start Shizuku and authorize Termux, then resume.',verification='NOT_VERIFIED')
+                return state
+            if plan['required']==['project']:
+                state.update(status='blocked',error=plan['reason'],result='Choose a project or a diagnostic target.',verification='NOT_VERIFIED')
+                return state
             if not journal.data['checks'] and plan['workflow']=='source_fix':
                 begin('diagnose','Checking the failure baseline')
                 observed=False;detail='';baseline_error=None
                 if plan['checks']:
                     baseline=runtime.verify(True)
                     observed=observed_failure(baseline.get('checks',[]))
-                    detail=json.dumps(compact(baseline))
+                    detail=json.dumps({'missing':baseline['missing'],'checks':[{k:c.get(k) for k in ('kind','argv','exit_code','output','error','diagnostics')} for c in baseline.get('checks',[])[-4:]]})
                     baseline_error=None if observed else 'Planned checks did not fail. The original failure was not reproduced.'
                 else:
                     baseline_error='No project checks in this workspace. Reproduction was not run.'
@@ -328,7 +336,7 @@ def run(job):
                     state.update(status='failed',verification='NOT_VERIFIED',result=baseline_error+'\nWorkspace: '+str(workspace.root),error=baseline_error.strip())
                     return state
                 messages.append({'role':'user','content':'Observed original failure:\n'+detail[:3000]})
-                brief=task_router.failure_brief(workspace.root, detail)
+                brief=source_lookup.failure_brief(workspace.root, detail)
                 if brief:messages.append({'role':'user','content':redact(brief)[:6000]})
             finish_attempts=0
             for turn in range(plan['max_steps']):
@@ -361,6 +369,7 @@ def run(job):
                     detail=' '.join(args.get('argv',[])) if name in {'run_argv','device_argv','diagnose'} else args.get('path') or args.get('package') or args.get('pattern','')
                     begin(name,title,detail)
                     journal.begin(name,args)
+                    revision_before=journal.data['revision']
                     try:
                         if journal.repeated_failures(name,args)>=plan['max_identical_failures']:raise ValueError('Repeated identical failure: inspect the prior error and choose a different evidence-based step.')
                         result=workspace.invoke(name,args)
@@ -372,7 +381,7 @@ def run(job):
                                      error='Repeated identical tool failures; stopped to preserve evidence.',
                                      result='Stopped after repeated failures. Inspect the saved diagnostics before resuming.')
                         return state
-                    if name in {'write_file','edit_patch','unified_patch'} and isinstance(result,dict) and not result.get('error') and plan.get('checks') and not workspace.readonly:
+                    if (name in {'write_file','edit_patch','unified_patch'} or journal.data['revision']>revision_before) and isinstance(result,dict) and not result.get('error') and plan.get('checks') and not workspace.readonly:
                         begin('verify_goal','Checking the edit against the original failure')
                         journal.begin('verify_goal',{'run_checks':True})
                         goal=runtime.verify(True);record('verify_goal',{'run_checks':True},goal)

@@ -58,7 +58,7 @@ class AndroidAdapterTests(unittest.TestCase):
         config={'execution_platform':'android','commands':{}}
         inventory=tool_catalog.discover(config,device=False)
         for goal in ['Analyse native crash','Review APK security','Review web service security']:
-            plan=task_router.select(self.root,goal,'AUDIT' if 'security' in goal else 'BUILD',inventory,config)
+            plan=task_router.execution_plan(self.root,goal,'AUDIT' if 'security' in goal else 'BUILD',inventory,config)
             self.assertFalse(set(plan['adapters'])&{'ghidra','semgrep','codeql','mobsf'})
     def test_tool_environment_preserves_termux_path(self):
         result=self.ws.command([sys.executable,'-c','import os; print(bool(os.environ.get("PATH")), os.environ["QODER_TOOL_PROBE"])'],env={'QODER_TOOL_PROBE':'present'})
@@ -75,8 +75,8 @@ class AndroidAdapterTests(unittest.TestCase):
             self.assertNotIn('codeql',inventory['tools']);self.assertEqual(inventory['access']['remote'],'disabled_android_scope')
             result=adapters.invoke(self.ws,'codeql','database',{'language':'javascript'},config=config)
             self.assertFalse(result['success']);self.assertTrue(result['unsupported_platform'])
-            plan=task_router.select(self.root,'Review web service security','AUDIT',inventory,config)
-            self.assertEqual(plan['adapters'],['zap','http'])
+            plan=task_router.execution_plan(self.root,'Review web service security','AUDIT',inventory,config)
+            self.assertEqual(plan['adapters'],['ast_grep'])
     def test_all_requested_adapter_groups_are_exposed(self):
         inventory=tool_catalog.public_capabilities(tool_catalog.discover({'execution_platform':'android'},device=False))
         self.assertEqual(set(inventory['adapter_groups']),{'code_intelligence','file_editing','version_control','command_execution','android_build','web_pwa_build','device_diagnostics','apk_analysis_editing','runtime_inspection','network_inspection','security_testing','verification'})

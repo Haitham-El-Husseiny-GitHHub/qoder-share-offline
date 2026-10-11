@@ -167,7 +167,7 @@ def _default_run(argv, timeout):
     return {'exit_code':proc.returncode,'output':(proc.stdout or proc.stderr or '')[:4000]}
 
 def public(report):
-    data={k:report[k] for k in ('token','preference','chosen','places','package') if k in report}
+    data={k:report[k] for k in ('token','preference','chosen','places','package','ambiguous') if k in report}
     return data
 
 def acquire(objective, workspace, device=None, config=None, run=None, clone=None, http_get=None):
@@ -206,6 +206,7 @@ def acquire(objective, workspace, device=None, config=None, run=None, clone=None
     report['places'].append({'where':'github','available':github.get('available',False),'repos':[r['full_name'] for r in github.get('repos',[])],'error':github.get('error','')})
     report['places'].append({'where':'cloudflare','configured':cloud.get('configured',False),'projects':[p['name'] for p in cloud.get('projects',[])],'error':cloud.get('error','')})
     exact_local=[p for p in local if _score(p, token)>=2]
+    report['ambiguous']=len(local)>1 and not any(_score(p,token)==3 for p in local)
     exact_git=_exact_repos(github.get('repos',[]), token)
     owned=[item for item in exact_git if item.get('own')]
     if len(owned)==1:exact_git=owned
@@ -235,5 +236,66 @@ def acquire(objective, workspace, device=None, config=None, run=None, clone=None
     if not report['root'] and report['package']:
         report['chosen']={'where':'installed','package':report['package'],'reason':'The app is installed, but no source tree was found in the permitted locations.'}
     elif not report['root']:
-        report['chosen']={'where':'none','reason':'No source matched in the permitted locations.'}
+        report['chosen']={'where':'none','reason':'ambiguous source' if report.get('ambiguous') else 'No source matched in the permitted locations.'}
     return report
+
+
+def locate_project(root, objective=''):
+    """Use the workspace root when it is a project. Otherwise one named or only nested project."""
+    from task_router import project
+    _IGNORE=IGNORE
+    root = Path(root)
+    if project(root)['source']:
+        return root
+    match = re.search(r'\bapp\s+([a-z0-9][a-z0-9._-]{1,40})\b', objective.lower())
+    token = match.group(1).strip('._-') if match else ''
+    found = []
+    for current, dirs, _files in os.walk(root, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in _IGNORE and not d.startswith('.')]
+        here = Path(current)
+        if len(here.relative_to(root).parts) > 2:
+            dirs.clear()
+            continue
+        if here != root and project(here)['source']:
+            found.append(here)
+            if len(found) > 8:
+                break
+    if token:
+        named = [p for p in found if token in p.name.lower()]
+        if len(named) == 1:
+            return named[0]
+    if len(found) == 1:
+        return found[0]
+    return None
+
+
+def failure_brief(root, output, limit=2):
+    """Load the source files a failure already named, so the model does not spend a turn searching."""
+    root = Path(root)
+    seen = []
+    for match in re.finditer(r'(?:/|\./|\b)[\w./\\-]{1,180}\.(?:py|js|jsx|ts|tsx|kt|java|kts|gradle|xml|smali|c|cc|cpp|h|go|rs)\b', output or ''):
+        raw = match.group(0).strip('.,:()')
+        candidate = Path(raw)
+        try:
+            if candidate.is_absolute():
+                rel = candidate.resolve().relative_to(root.resolve())
+            else:
+                rel = Path(raw)
+                if not (root / rel).resolve().is_relative_to(root.resolve()):
+                    continue
+            path = (root / rel).resolve()
+            key = str(rel)
+            if path.is_file() and key not in seen:
+                seen.append(key)
+        except (OSError, ValueError):
+            continue
+    source = [p for p in seen if not any(part in {'tests', 'test', '__tests__'} for part in Path(p).parts) and not Path(p).name.startswith('test_')]
+    chunks = []
+    for rel in (source or seen)[:limit]:
+        try:
+            chunks.append(rel + '\n' + (root / rel).read_text()[:2500])
+        except (OSError, UnicodeError):
+            continue
+    if not chunks:
+        return ''
+    return 'Files cited by the failure, already read. Apply one edit_patch to the cause. Do not search first.\n\n' + '\n\n'.join(chunks)

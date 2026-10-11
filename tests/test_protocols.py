@@ -136,7 +136,7 @@ class VerificationTests(unittest.TestCase):
             (root/'build.js').write_text("import {mkdirSync,writeFileSync} from 'node:fs'; import {total} from './total.js'; mkdirSync('dist',{recursive:true});writeFileSync('dist/index.html',String(total(2,3)));\n")
             (root/'test_total.test.js').write_text("import test from 'node:test';import assert from 'node:assert/strict';import {total} from './total.js';test('sum',()=>assert.equal(total(2,3),5));\n")
             job={'id':'a'*32,'workspace':str(root),'objective':'Repair total bug','profile':'FIX'};j=Journal(root/'jobs',job)
-            caps=tool_catalog.discover(device=False);plan=task_router.select(root,job['objective'],'FIX',caps,{})
+            caps=tool_catalog.discover(device=False);plan=task_router.execution_plan(root,job['objective'],'FIX',caps,{})
             ws=Workspace(root,False);runtime=Runtime(ws,j,plan,caps,{});ws.runtime=runtime;ws.journal=j
             self.assertFalse(runtime.verify()['verified'])
             ws.invoke('edit_patch',{'path':'total.js','old_text':'a-b','new_text':'a+b','expected_sha256':fingerprint(root/'total.js')})
@@ -170,18 +170,21 @@ class VerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t);p=root/'README.md';p.write_text('tyop\n');ws=Workspace(root,False)
             job={'id':'a'*32,'workspace':str(root),'objective':'Fix README typo','profile':'FIX'};j=Journal(root/'jobs',job)
-            caps=tool_catalog.discover(device=False);plan=task_router.select(root,job['objective'],'FIX',caps,{})
+            caps=tool_catalog.discover(device=False);plan=task_router.execution_plan(root,job['objective'],'FIX',caps,{})
             self.assertEqual(plan['required'],['change','text_validation']);runtime=Runtime(ws,j,plan,caps,{});ws.runtime=runtime;ws.journal=j
             ws.invoke('edit_patch',{'path':'README.md','old_text':'tyop','new_text':'typo','expected_sha256':fingerprint(p)})
+            self.assertFalse(runtime.verify()['verified'])
+            ws.invoke('read_file',{'path':'README.md'})
             self.assertTrue(runtime.verify()['verified'])
     def test_unchanged_and_no_tests_are_not_success(self):
         self.assertFalse(task_router.test_result({'exit_code':0,'output':'# tests 0\n# pass 0'})['success'])
     def test_native_creation_and_source_repair_routes(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t);caps=tool_catalog.discover(device=False)
-            self.assertEqual(task_router.select(root,'Create a native Android app','BUILD',caps,{})['workflow'],'source_build')
             (root/'CMakeLists.txt').write_text('project(sample)\n')
-            plan=task_router.select(root,'Fix native parser crash','FIX',caps,{})
+            self.assertEqual(task_router.execution_plan(root,'Create a native Android app','BUILD',caps,{})['workflow'],'source_build')
+            (root/'CMakeLists.txt').write_text('project(sample)\n')
+            plan=task_router.execution_plan(root,'Fix native parser crash','FIX',caps,{})
             self.assertEqual(plan['workflow'],'source_fix');self.assertIn('cmake',plan['adapters'])
     def test_reserve_recovers_interrupted_job_automatically(self):
         with tempfile.TemporaryDirectory() as t:

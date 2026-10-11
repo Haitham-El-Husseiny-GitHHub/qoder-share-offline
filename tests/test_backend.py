@@ -96,14 +96,14 @@ class WorkspaceTests(unittest.TestCase):
 class RouterTests(unittest.TestCase):
     def setUp(self):self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.caps=inventory()
     def tearDown(self):self.temp.cleanup()
-    def plan(self,text,profile='BUILD'):return task_router.select(self.root,text,profile,self.caps,{})
+    def plan(self,text,profile='BUILD'):return task_router.execution_plan(self.root,text,profile,self.caps,{})
     def test_source_preferred_over_incidental_apk(self):
         (self.root/'package.json').write_text(json.dumps({'scripts':{'test':'node --test','build':'node build.js'}}))
         p=self.plan('Repair a source bug affecting APK export')
         self.assertEqual(p['workflow'],'source_fix');self.assertIn('node',p['adapters'])
-    def test_explicit_apk_modification_needs_install_and_function(self):
+    def test_explicit_apk_modification_only_requires_rebuild(self):
         p=self.plan('Modify an existing APK');self.assertEqual(p['workflow'],'apk_modify')
-        self.assertEqual(p['required'],['apk_rebuild','apk_signature','installation','functional'])
+        self.assertEqual(p['required'],['apk_rebuild'])
     def test_unsigned_scope_and_inspection(self):
         self.assertEqual(self.plan('Rebuild the APK unsigned')['required'],['apk_rebuild'])
         self.assertEqual(self.plan('Inspect this APK')['workflow'],'apk_inspect')
@@ -131,26 +131,26 @@ class RouterTests(unittest.TestCase):
         text='i have an app prettyup, it does not load. crashes upon opening. i want to fix it. built from opensource'
         p=self.plan(text)
         self.assertEqual(p['workflow'],'device')
-        self.assertEqual(p['required'],['device_inspection','functional'])
+        self.assertEqual(p['required'],['device_inspection'])
         self.assertNotIn('tests',p['required']);self.assertNotIn('change',p['required']);self.assertNotIn('reproduction',p['required'])
     def test_launch_with_source_stays_source_fix(self):
         (self.root/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
-        p=task_router.select(self.root,'the prettyup app crashes upon opening. fix it','BUILD',self.caps,{'target_source_confirmed':True})
+        p=task_router.execution_plan(self.root,'the prettyup app crashes upon opening. fix it','BUILD',self.caps,{'target_source_confirmed':True})
         self.assertEqual(p['workflow'],'source_fix');self.assertIn('reproduction',p['required']);self.assertIn('tests',p['required'])
     def test_locate_named_nested_app(self):
         app=self.root/'prettyup';app.mkdir();(app/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
         other=self.root/'other';other.mkdir();(other/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
-        self.assertEqual(task_router.locate_project(self.root,'i have an app prettyup, it crashes upon opening'),app)
+        self.assertEqual(source_lookup.locate_project(self.root,'i have an app prettyup, it crashes upon opening'),app)
     def test_failure_brief_loads_cited_source_not_the_test(self):
         (self.root/'total.py').write_text('def total(a,b):\n    return a+b+1\n')
         (self.root/'tests').mkdir();(self.root/'tests'/'test_total.py').write_text('def test_total():\n    assert False\n')
         output='File "%s", line 2, in total\nFile "%s", line 2, in test_total\n'%(self.root/'total.py',self.root/'tests'/'test_total.py')
-        brief=task_router.failure_brief(self.root, output)
+        brief=source_lookup.failure_brief(self.root, output)
         self.assertIn('total.py',brief);self.assertIn('return a+b+1',brief);self.assertNotIn('assert False',brief)
     def test_small_tool_surface(self):
         selected=tools(runner.TOOLS,self.plan('Create a Python app'))
         names={x['name'] for x in selected}
-        self.assertNotIn('device_argv',names);self.assertNotIn('apk_tools',names);self.assertIn('verify_goal',names)
+        self.assertNotIn('device_argv',names);self.assertNotIn('apk_tools',names);self.assertNotIn('verify_goal',names)
 
 
 class JournalTests(unittest.TestCase):
@@ -280,7 +280,7 @@ class WorkerTests(unittest.TestCase):
         with patch.object(runner,'device_execute',return_value={'exit_code':0,'output':''}),patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Not verified'}):
             state=runner.run(job(empty,objective='prettyup app installed but not opening up',profile='BUILD'))
         self.assertEqual(state['workflow'],'device')
-        self.assertEqual(state['status'],'needs_verification')
+        self.assertEqual(state['status'],'blocked')
         self.assertNotEqual(state.get('verification'),'GOAL_VERIFIED')
 
     def test_nested_named_app_reproduces_its_tests(self):

@@ -1,11 +1,8 @@
 """Select a small workflow and enforce evidence-based completion."""
 import json
-import os
 import re
 from pathlib import Path
 from tool_catalog import android_scope, ANDROID_EXCLUDED
-
-_IGNORE={'.git','node_modules','.venv','venv','__pycache__','build','dist','.gradle','.qoder-workspaces','.qoder-worktrees','.qoder-artifacts'}
 
 
 def project(root):
@@ -26,15 +23,11 @@ def project(root):
     elif (root / 'gradlew').is_file():
         android = any('com.android.' in p.read_text(errors='replace')[:50000] for p in list(root.glob('*.gradle*')) + list(root.glob('*/build.gradle*')))
         data.update(source=True, kind='android' if android else 'gradle')
-        data['checks'] = [{'kind': 'build', 'argv': ['./gradlew', '--offline', 'assembleDebug' if android else 'assemble']},
-                          {'kind': 'tests', 'argv': ['./gradlew', '--offline', 'testDebugUnitTest' if android else 'test']}]
+        data['checks'] = [{'kind': 'build', 'argv': ['./gradlew', '--offline', 'assembleDebug']},
+                          {'kind': 'tests', 'argv': ['./gradlew', '--offline', 'testDebugUnitTest']}]
     elif (root / 'pyproject.toml').is_file() or (root / 'tests').is_dir() or list(root.glob('test_*.py')):
         data.update(source=True, kind='python')
-        pytest_project = (root / 'pytest.ini').exists() or ((root / 'pyproject.toml').exists() and 'pytest' in (root / 'pyproject.toml').read_text())
-        if pytest_project:
-            data['checks'] = [{'kind': 'tests', 'argv': ['python3', '-m', 'pytest', '-q']}]
-        else:
-            data['checks'] = [{'kind': 'tests', 'argv': ['python3', '-m', 'unittest', 'discover', '-s', 'tests' if (root / 'tests').is_dir() else '.', '-v']}]
+        data['checks'] = [{'kind': 'tests', 'argv': ['python3', '-m', 'unittest', 'discover', '-s', 'tests' if (root / 'tests').is_dir() else '.', '-v']}]
     elif (root / 'CMakeLists.txt').exists():
         data.update(source=True, kind='native')
         # Configuration must precede build; the model gets the exact commands.
@@ -48,33 +41,6 @@ def launch_failure(text):
     return bool(re.search(r"\b(crash(?:es|ed)?|does not load|doesn't load|doesnt load|will not open|won't open|upon opening|on opening|on launch|force[- ]close)\b", text.lower()))
 
 
-def locate_project(root, objective=''):
-    """Use the workspace root when it is a project. Otherwise one named or only nested project."""
-    root = Path(root)
-    if project(root)['source']:
-        return root
-    match = re.search(r'\bapp\s+([a-z0-9][a-z0-9._-]{1,40})\b', objective.lower())
-    token = match.group(1).strip('._-') if match else ''
-    found = []
-    for current, dirs, _files in os.walk(root, followlinks=False):
-        dirs[:] = [d for d in dirs if d not in _IGNORE and not d.startswith('.')]
-        here = Path(current)
-        if len(here.relative_to(root).parts) > 2:
-            dirs.clear()
-            continue
-        if here != root and project(here)['source']:
-            found.append(here)
-            if len(found) > 8:
-                break
-    if token:
-        named = [p for p in found if token in p.name.lower()]
-        if len(named) == 1:
-            return named[0]
-    if len(found) == 1:
-        return found[0]
-    return None
-
-
 def device_intent(objective):
     text=objective.lower()
     source_target=bool(re.search(r'\bsource\b|\b[\w/-]+\.(?:py|js|ts|java|kt|c|cpp)\b',text))
@@ -84,77 +50,71 @@ def device_intent(objective):
 
 
 def select(root, objective, profile, inventory, config):
-    text = objective.lower()
-    # Explicit installed-app intent wins over unrelated files in the workspace.
-    source_target = bool(re.search(r'\bsource\b|\b[\w/-]+\.(?:py|js|ts|java|kt|c|cpp)\b', text))
-    device_target = not config.get('target_source_confirmed') and device_intent(objective)
-    detected = {'source':False,'kind':'device','manager':None,'checks':[]} if device_target else project(root)
-    mutate_apk = bool(re.search(r'\b(modify|rebuild|repack|merge|sign|resign|edit|patch)\b.{0,70}\b(apk|apks|apkm|xapk|dex|smali)\b|\b(apk|smali)\b.{0,70}\b(modify|rebuild|patch|sign)\b', text))
-    if not mutate_apk and not device_target and not source_target and profile not in {'REVIEW','AUDIT','VERIFY'} and re.search(r'\b(readme|documentation|typo|spelling)\b',text):
-        route,adapters,required='text_edit',[],['change','text_validation']
-    elif mutate_apk:
-        route, adapters, required = 'apk_modify', ['jadx', 'apktool', 'apkeditor', 'baksmali', 'smali', 'zipalign', 'apksigner', 'bundletool', 'adb', 'rish', 'ui'], ['apk_signature', 'installation', 'functional']
-        if 'unsigned' in text:
-            required = ['apk_rebuild']
-        elif re.search(r'\b(modify|rebuild|repack|merge|edit|patch)\b',text):required.insert(0,'apk_rebuild')
-    elif device_target:
-        route, adapters, required = 'device', ['adb', 'rish', 'ui'], ['device_inspection', 'functional']
-    elif re.search(r'\b(security|vulnerab|audit|cve|penetration)', text) or profile == 'AUDIT':
-        route = 'security'
-        adapters = ['semgrep', 'codeql'] if detected['source'] else ['mobsf', 'zap']
-        if list(Path(root).glob('*.apk')):
-            adapters.append('mobsf')
-        required = ['security_scan', 'security_validation']
-    elif re.search(r'\b(native|segfault|segmentation|backtrace|fuzz|ghidra)\b|\.so\b',text) and re.search(r'\b(analyse|analyze|inspect|reverse|crash|segfault|segmentation|backtrace|fuzz|ghidra)\b',text) and not (detected['source'] and (profile=='FIX' or re.search(r'\b(fix|repair)\b',text))):
-        route, adapters, required = 'native', ['ghidra', 'debugger', 'frida', 'libfuzzer', 'adb', 'rish'], ['native_analysis', 'runtime_observation']
-    elif re.search(r'\b(api|http|https|request|endpoint|proxy|network)\b', text) and not detected['source']:
-        route, adapters, required = 'api', ['http', 'mitmproxy'], ['api_reproduction', 'api_response']
-    elif re.search(r'\b(installed app|logcat|shizuku|permissions|dumpsys|device crash)\b', text) and not detected['source']:
-        route, adapters, required = 'device', ['adb', 'rish', 'ui'], ['device_inspection', 'functional']
-    elif not detected['source'] and launch_failure(text):
-        route, adapters, required = 'device', ['adb', 'rish', 'ui'], ['device_inspection','functional']
-    elif not detected['source'] and re.search(r'\b(apk|aab|dex|smali)\b', text):
-        route, adapters, required = 'apk_inspect', ['jadx', 'apktool', 'apkeditor', 'baksmali', 'bundletool'], ['inspection']
-    elif profile == 'REVIEW' or re.search(r'^\s*(explain|inspect|read|summarize|find|search)\b', text):
-        route, adapters, required = 'inspect', ['language_server', 'ast_grep'], ['inspection']
+    """Pure first-match routing. No discovery, network requests or tool calls."""
+    detected=project(root)
+    text=objective.lower()
+    source=detected['source']
+    fix=profile=='FIX' or bool(re.search(r'\b(fix|repair|bug|failing|failure|broken)\b',text))
+    crash=launch_failure(text) or bool(re.search(r'\b(crashing|not opening|shuts down)\b',text))
+    modify=bool(re.search(r'\b(modify|rebuild|repack|merge|sign|resign|edit|patch)\b',text)) and bool(re.search(r'\b(apk|apks|apkm|xapk|smali)\b',text))
+    if config.get('ambiguous_source'):
+        workflow,adapters,required,reason='device',['adb','rish'],['device_inspection'],'ambiguous source'
+    elif modify:
+        workflow='apk_modify';adapters=['jadx','apktool','apkeditor','baksmali','smali','zipalign','apksigner','bundletool']
+        required=['apk_rebuild'] if re.search(r'\b(modify|rebuild|repack|merge|edit|patch)\b',text) else []
+        if 'unsigned' not in text and re.search(r'\b(sign|resign|signed|signature)\b',text):required.append('apk_signature')
+        if re.search(r'\binstall(?:ation)?\b',text):adapters+=['adb','rish'];required.append('installation')
+        if re.search(r'\b(functional|instrumentation|ui test)\b',text):adapters.append('ui');required.append('functional')
+        reason='explicit APK modification'
+    elif re.search(r'\b(readme|documentation|typo|spelling)\b',text):
+        workflow,adapters,required,reason='text_edit',[],['change','text_validation'],'explicit text edit'
+    elif profile=='AUDIT' or re.search(r'\b(security|vulnerability|vulnerabilities|cve)\b',text):
+        workflow,adapters,required,reason='security',['ast_grep'],['security_scan'],'source scan; findings do not imply repair'
+    elif re.search(r'\b(segfault|backtrace|fuzz|native|ghidra)\b|\.so\b',text) and not (source and fix) and re.search(r'\b(analyse|analyze|analysis|segfault|backtrace|fuzz|ghidra)\b',text):
+        workflow,adapters,required,reason='native',['debugger','frida','libfuzzer'],['runtime_observation'],'native runtime analysis'
+    elif not source and not crash and re.search(r'\b(api|http|https|endpoint|request)\b',text):
+        workflow,adapters,required,reason='api',['http','mitmproxy'],['api_response'],'API response inspection'
+    elif not source and (crash or device_intent(objective)):
+        workflow,adapters,required,reason='device',['adb','rish'],['device_inspection'],'device diagnosis without a source project'
+    elif not source and re.search(r'\b(apk|aab|dex|smali)\b',text):
+        workflow,adapters,required,reason='apk_inspect',['jadx','apktool','apkeditor','baksmali'],['apk_inspection'],'decode or decompile an existing APK'
+    elif profile=='REVIEW' or re.search(r'^\s*(explain|inspect|read|find|search|summarize)\b',text):
+        workflow,adapters,required,reason='inspect',[],['inspection'],'read-only inspection'
+    elif fix:
+        workflow,adapters,required,reason='source_fix',['language_server','ast_grep'],['reproduction','tests','change'],'repair an existing source project' if source else 'no source project'
+    elif source:
+        workflow,adapters,required,reason='source_build',['language_server','ast_grep'],['tests'],'build the open project; no edit required'
     else:
-        fix = profile == 'FIX' or bool(re.search(r'\b(fix|repair|bug|failing|failure|broken)\b', text))
-        route = 'source_fix' if fix else 'source_build'
-        adapters = ['language_server', 'ast_grep']
-        if detected['kind'] in {'android', 'gradle'}:
-            adapters.append('gradle')
-        elif detected['kind'] == 'node':
-            adapters.append('node')
-        elif detected['kind']=='native':adapters.append('cmake')
-        elif re.search(r'\b(android|kotlin|java)\b',text):adapters.append('gradle')
-        if re.search(r'\b(ui|instrumentation|functional|end.to.end)\b', text):adapters.append('ui')
-        if re.search(r'\b(api|http|endpoint|network)\b',text):adapters.extend(['http','mitmproxy'])
-        required = (['reproduction'] if fix else []) + ['tests']
-        if fix or re.search(r'\b(create|extend|add|implement|modify|refactor|update|new app)\b',text):
-            if profile!='VERIFY':required.append('change')
-        if any(c['kind'] == 'build' for c in detected['checks']):
-            required.append('build')
-        if re.search(r'\brefactor\b', text) and any(c['kind'] == 'typecheck' for c in detected['checks']):
-            required.append('typecheck')
-    custom = config.get('verification_commands', [])
-    if android_scope(config):
-        adapters = [name for name in adapters if name not in ANDROID_EXCLUDED]
-        if route == 'security':
-            if detected['kind'] == 'node' or re.search(r'\b(web|api|http|https|service|zap)\b', text):
-                adapters = ['zap','http']
-            else:
-                adapters = ['language_server','ast_grep'] if detected['source'] else ['jadx','apktool','frida']
-                required = ['inspection','security_validation']
-        if route == 'native' and 'ghidra' not in adapters:
-            required = ['runtime_observation']
-    if not isinstance(custom, list):
-        raise ValueError('verification_commands must be an array of {kind, argv} objects.')
-    checks = custom or (detected['checks'] if route in {'source_fix','source_build','inspect','security'} else [])
-    return {'workflow': route, 'target_kind': detected['kind'], 'source_preferred': detected['source'] and not mutate_apk and not device_target,
-            'adapters': adapters, 'required': required, 'checks': checks, 'manager': detected['manager'],
-            'prerequisites': {name: inventory['tools'][name]['missing'] for name in adapters if not inventory['tools'][name]['installed']},'custom_checks':bool(custom),
-            'mutating': route in {'source_fix', 'source_build', 'apk_modify','text_edit'} and profile not in {'REVIEW', 'AUDIT'},
-            'max_steps': 6, 'max_identical_failures': 2}
+        workflow,adapters,required,reason='inspect',[],['project'],'no source project or diagnostic target'
+    checks=[]
+    if workflow in {'source_fix','source_build'}:
+        checks=detected['checks']
+        builder={'android':'gradle','gradle':'gradle','node':'node','native':'cmake'}.get(detected['kind'])
+        if builder:adapters.append(builder)
+        if any(c['kind']=='build' for c in checks):required.append('build')
+        if re.search(r'\brefactor\b',text) and any(c['kind']=='typecheck' for c in checks):required.append('typecheck')
+        # Optional tools must be explicitly requested rather than implied by words like API.
+        if re.search(r'\b(language server|lsp)\b',text) and 'language_server' not in adapters:adapters.append('language_server')
+        if re.search(r'\bui\b|instrumentation',text):adapters.append('ui')
+        if re.search(r'\bhttp client\b',text):adapters.append('http')
+        if re.search(r'\bapktool\b',text):adapters.append('apktool')
+    if android_scope(config):adapters=[n for n in adapters if n not in ANDROID_EXCLUDED]
+    return {'workflow':workflow,'adapters':list(dict.fromkeys(adapters)),'required':required,'checks':checks,'reason':reason}
+
+
+def execution_plan(root, objective, profile, inventory, config):
+    """Add runner bookkeeping to a pure five-field routing decision."""
+    decision=select(root,objective,profile,inventory,config)
+    detected=project(root)
+    custom=config.get('verification_commands',[])
+    if not isinstance(custom,list):raise ValueError('verification_commands must be an array.')
+    if custom and decision['workflow'] in {'source_fix','source_build'}:decision['checks']=custom
+    return {**decision,'target_kind':detected['kind'],'manager':detected['manager'],
+            'source_preferred':detected['source'] and decision['workflow'] in {'source_fix','source_build'},
+            'custom_checks':bool(custom),'readonly':profile in {'REVIEW','AUDIT'} or decision['workflow']=='inspect',
+            'mutating':decision['workflow'] in {'source_fix','source_build','text_edit','apk_modify'} and profile not in {'REVIEW','AUDIT','VERIFY'},
+            'prerequisites':{n:inventory['tools'].get(n,{}).get('missing',['Unavailable adapter']) for n in decision['adapters'] if not inventory['tools'].get(n,{}).get('installed')},
+            'max_steps':6,'max_identical_failures':2}
 
 
 def evidence(journal):
@@ -177,38 +137,6 @@ def evidence(journal):
     missing = [kind for kind in plan['required'] if kind not in current]
     return {'verified': not missing, 'required': plan['required'], 'passed': sorted(current), 'missing': missing,
             'revision': revision, 'checks': data['checks'][-20:], 'artifacts': data['artifacts'], 'workspace': data['workspace']}
-
-
-def failure_brief(root, output, limit=2):
-    """Load the source files a failure already named, so the model does not spend a turn searching."""
-    root = Path(root)
-    seen = []
-    for match in re.finditer(r'(?:/|\./|\b)[\w./\\-]{1,180}\.(?:py|js|jsx|ts|tsx|kt|java|kts|gradle|xml|smali|c|cc|cpp|h|go|rs)\b', output or ''):
-        raw = match.group(0).strip('.,:()')
-        candidate = Path(raw)
-        try:
-            if candidate.is_absolute():
-                rel = candidate.resolve().relative_to(root.resolve())
-            else:
-                rel = Path(raw)
-                if not (root / rel).resolve().is_relative_to(root.resolve()):
-                    continue
-            path = (root / rel).resolve()
-            key = str(rel)
-            if path.is_file() and key not in seen:
-                seen.append(key)
-        except (OSError, ValueError):
-            continue
-    source = [p for p in seen if not any(part in {'tests', 'test', '__tests__'} for part in Path(p).parts) and not Path(p).name.startswith('test_')]
-    chunks = []
-    for rel in (source or seen)[:limit]:
-        try:
-            chunks.append(rel + '\n' + (root / rel).read_text()[:2500])
-        except (OSError, UnicodeError):
-            continue
-    if not chunks:
-        return ''
-    return 'Files cited by the failure, already read. Apply one edit_patch to the cause. Do not search first.\n\n' + '\n\n'.join(chunks)
 
 
 def check_kind(argv, plan):

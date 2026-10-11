@@ -285,6 +285,11 @@ def _local(ws, name, operation, inputs, timeout, config, command):
                 result['matches'] = json.loads(result['output'])[:30]
             except ValueError:
                 result['structured_output_truncated'] = True
+        if ws.runtime and ws.runtime.plan['workflow']=='security' and result.get('success'):
+            if result.get('structured_output_truncated'):raise ValueError('Scan JSON is incomplete; narrow the target/pattern.')
+            report=new_output(ws,{},'.json');report.parent.mkdir(parents=True,exist_ok=True)
+            report.write_text(json.dumps({'scanner':'ast-grep','pattern':pattern,'language':language,'path':relative(ws,target),'matches':result['matches'],'scope':'structural pattern only; findings are not fixes'})+'\n')
+            result['artifacts']=[artifact(ws,relative(ws,report),'structural_scan')]
         return result
     if name == 'gradle':
         if not (ws.root / 'gradlew').is_file():
