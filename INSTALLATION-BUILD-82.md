@@ -9,7 +9,7 @@ Build 82 is an Android installer and an offline Termux tool cache. It is not a s
 You need:
 
 1. An ARM64 Android phone with at least 4 GB free in Termux storage. 6–8 GB free is recommended for the archive, extraction, and installed tools.
-2. The original signed Qoder Share APK (package `com.qoder.mobile.share`) already installed. Installer83 updates its backend; it does not replace this editor APK.
+2. [Qoder-Share-unified-0.3.5-79.apk](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Share-unified-0.3.5-79.apk), the original signed Qoder Share APK (package `com.qoder.mobile.share`). Installer83 updates its backend; it does not replace this editor APK.
 3. Official ARM64 Termux from [F-Droid](https://f-droid.org/packages/com.termux/) or the [Termux GitHub releases](https://github.com/termux/termux-app/releases). Play Store Termux is not supported.
 4. [Qoder-Tools-Installer-83.apk](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Tools-Installer-83.apk).
 5. [Qoder-Android-Tools-82.zip](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Android-Tools-82.zip), size 1,706,494,607 bytes.
