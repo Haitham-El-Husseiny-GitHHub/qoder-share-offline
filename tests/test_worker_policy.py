@@ -52,7 +52,7 @@ class WorkerPolicyTests(unittest.TestCase):
             captured.append(payload)
             return json.dumps({'tool_calls':[{'name':'read_file','arguments':{'path':'ledger.py'}}],'content':'Here is my plan'})
         def lookup(path):return [{'n_ctx':32768}] if path=='/slots' else {'data':[{'id':'test'}]}
-        with patch.object(runner,'request',side_effect=lookup),patch.object(runner,'fit_messages',side_effect=lambda messages,context:messages),patch.object(runner,'stream_completion',side_effect=stream):
+        with patch.object(runner,'request',side_effect=lookup),patch.object(runner,'fit_messages',side_effect=lambda messages,context:(messages,100)),patch.object(runner,'stream_completion',side_effect=stream):
             answer=runner.complete([{'role':'system','content':runner.WORKER_POLICY}],runner.TOOLS,'test')
         self.assertEqual(answer['content'],'')
         self.assertIn(runner.WORKER_POLICY,captured[0]['messages'][0]['content'])

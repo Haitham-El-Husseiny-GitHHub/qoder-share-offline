@@ -5,7 +5,7 @@ from pathlib import Path
 import engineering_tools
 from bridge import status as bridge_status
 from device_tools import execute as device_execute
-from runtime_config import ROOT,RUNTIME,MODELS,KEY_FILE,ensure,request,stream_completion,CODING_ROUTES,fit_messages
+from runtime_config import ROOT,RUNTIME,MODELS,KEY_FILE,ensure,request,stream_completion,CODING_ROUTES,fit_messages,generation_timeout
 JOBS=ROOT/'jobs'
 MODEL=MODELS['phone-code'][0]
 class Cancelled(Exception):pass
@@ -261,8 +261,8 @@ def complete(messages,tools,model=MODEL,progress=None):
     prompt[0]['content']=prompt[0]['content']+'\nTools: '+guide
     slots=request('/slots')
     context=min(slot['n_ctx'] for slot in slots)
-    prompt=fit_messages(prompt,context)
-    content=stream_completion({'model':model,'messages':prompt,'temperature':0,'max_tokens':384,'response_format':{'type':'json_schema','json_schema':{'name':'coding_turn','strict':True,'schema':schema}}},progress=progress,timeout=180)
+    prompt,prompt_tokens=fit_messages(prompt,context)
+    content=stream_completion({'model':model,'messages':prompt,'temperature':0,'max_tokens':384,'response_format':{'type':'json_schema','json_schema':{'name':'coding_turn','strict':True,'schema':schema}}},progress=progress,timeout=generation_timeout(prompt_tokens))
     parsed=json.loads(content)
     if not isinstance(parsed,dict) or not isinstance(parsed.get('tool_calls'),list) or not isinstance(parsed.get('content'),str):raise ValueError('Model returned an invalid coding turn.')
     known=set(names)

@@ -59,14 +59,17 @@ class PromptBudgetTests(unittest.TestCase):
                   {'role':'assistant','content':'old'*1000},{'role':'user','content':'result'*1000},
                   {'role':'assistant','content':'latest call'},{'role':'user','content':'latest source'}]
         with patch.object(runtime_config,'request',side_effect=self.lookup):
-            fitted=runtime_config.fit_messages(messages,1024)
+            fitted,count=runtime_config.fit_messages(messages,1024)
         self.assertEqual(fitted,messages[:2]+messages[-2:]);self.assertEqual(len(messages),6)
     def test_larger_context_keeps_complete_history(self):
         messages=[{'role':'system','content':'policy'},{'role':'user','content':'task'},
                   {'role':'assistant','content':'old'*1000},{'role':'user','content':'result'*1000},
                   {'role':'assistant','content':'latest call'},{'role':'user','content':'latest source'}]
         with patch.object(runtime_config,'request',side_effect=self.lookup):
-            self.assertEqual(runtime_config.fit_messages(messages,32768),messages)
+            self.assertEqual(runtime_config.fit_messages(messages,32768)[0],messages)
+    def test_long_prompt_timeout_scales_beyond_old_three_minutes(self):
+        self.assertGreater(runtime_config.generation_timeout(5631),600)
+        self.assertEqual(runtime_config.generation_timeout(2_000_000),14400)
     def test_multibyte_oversized_task_stops_without_truncation(self):
         messages=[{'role':'system','content':'policy'},{'role':'user','content':'أ'*500}]
         with patch.object(runtime_config,'request',side_effect=self.lookup),self.assertRaisesRegex(ValueError,'after reply reserve'):

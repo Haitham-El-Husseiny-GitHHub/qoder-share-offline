@@ -30,6 +30,10 @@ the worker policy, task and latest evidence are retained verbatim. An oversized
 essential prompt stops with an explicit context error. The old 8,000-character
 history cap and 1,000-character history clipping are removed. This change does
 not override the worker's tools, router, policy or verification requirements.
+Generation timeouts scale with the actual prompt tokens and reply allowance,
+up to four hours. This removes the old three-minute cutoff on long CPU prompts;
+the user's Stop control remains available. Processing a large prompt can still
+take minutes even when its token count fits the model context.
 
 All changes are in the Termux companion; the attachment APK build 84 remains
 compatible and does not need rebuilding. Local inference has no token billing,

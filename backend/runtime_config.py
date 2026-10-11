@@ -76,10 +76,14 @@ def fit_messages(messages,context_window,reply_tokens=384):
     while True:
         rendered=request('/apply-template',{'messages':prompt},timeout=30)['prompt']
         tokens=request('/tokenize',{'content':rendered,'add_special':True,'parse_special':True},timeout=30)['tokens']
-        if len(tokens)<=budget:return prompt
+        if len(tokens)<=budget:return prompt,len(tokens)
         if len(prompt)<=4:
             raise ValueError('Task and latest evidence need %d tokens; this model has %d available after reply reserve. Reduce the task or use a model with more context.'%(len(tokens),budget))
         del prompt[2:4]
+
+def generation_timeout(prompt_tokens,reply_tokens=384):
+    # Phone CPU allowance: 8 prompt tokens/sec, 2 reply tokens/sec, plus setup time.
+    return max(180,min(14400,120+prompt_tokens//8+reply_tokens//2))
 
 def stream_completion(body,progress=None,timeout=600):
     """Read only public completion content; never expose reasoning fields."""
