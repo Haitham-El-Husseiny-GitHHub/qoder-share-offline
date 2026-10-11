@@ -43,7 +43,7 @@ def start(route):
         if not pid:
             # Only Qoder's own loopback runtime and private key are used.
             log=(RUNTIME/'server.log').open('ab',buffering=0)
-            args=['/data/data/com.termux/files/usr/bin/llama-server','--model',str(path),'--alias',model,'--host','127.0.0.1','--port',str(PORT),'--api-key-file',str(KEY_FILE),'--ctx-size',str(context*2),'--parallel','2','--threads','4','--batch-size','512','--ubatch-size','128','--cache-type-k','q8_0','--cache-type-v','q8_0','--cache-ram','0','--ctx-checkpoints','0','--jinja','--reasoning-budget','0','--chat-template-kwargs','{"enable_thinking":false}','--no-webui']
+            args=['/data/data/com.termux/files/usr/bin/llama-server','--model',str(path),'--alias',model,'--host','127.0.0.1','--port',str(PORT),'--api-key-file',str(KEY_FILE),'--ctx-size',str(context*2),'--parallel','2','--threads','6','--threads-batch','8','--batch-size','512','--ubatch-size','128','--flash-attn','on','--cache-type-k','q8_0','--cache-type-v','q8_0','--cache-ram','0','--ctx-checkpoints','0','--jinja','--reasoning-budget','0','--chat-template-kwargs','{"enable_thinking":false}','--no-webui']
             proc=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
             pid=proc.pid
             state={'pid':pid,'route':route,'model':model,'model_path':str(path),'port':PORT,'parallel':2,'context_window':context,'trained_context_window':limits['trained_context_window'],'context_policy_version':limits['policy_version']}

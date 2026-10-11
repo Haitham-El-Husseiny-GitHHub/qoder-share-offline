@@ -11,17 +11,6 @@
     "sha256": "b4ebb19a7ea706b107f6b3d78ca31dce7005a84ea31da2b14437e2b2cca68a58"
   },
   {
-    "route": "dolphin-code",
-    "mode": "dolphin",
-    "id": "Dolphin-3.0-Llama-3.2-3B",
-    "name": "Dolphin Llama 3B \u00b7 MR",
-    "file": "Dolphin3.0-Llama3.2-3B.Q4_K_M.gguf",
-    "repo": "mradermacher/Dolphin3.0-Llama3.2-3B-GGUF",
-    "revision": "3820144a57c08b1eb3e60c2a8dfbdba3bf717f04",
-    "size": 2019382592,
-    "sha256": "c48c5cf97be2817be6cde382a00480f33e39fdb5b87b40c4eb57dacc44a7759d"
-  },
-  {
     "route": "phi-code",
     "mode": "phi",
     "id": "Phi-3.5-Mini-Uncensored",
