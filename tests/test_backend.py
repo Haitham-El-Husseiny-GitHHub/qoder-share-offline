@@ -126,6 +126,20 @@ class RouterTests(unittest.TestCase):
         j.check('tests',{'exit_code':1},['pytest','test_bug.py']);j.data['revision']=1
         j.check('tests',{'exit_code':0},['pytest','test_other.py']);self.assertFalse(task_router.evidence(j)['verified'])
         j.check('tests',{'exit_code':0},['pytest','test_bug.py']);self.assertTrue(task_router.evidence(j)['verified'])
+    def test_launch_without_source_is_device_not_fake_source_fix(self):
+        text='i have an app prettyup, it does not load. crashes upon opening. i want to fix it. built from opensource'
+        p=self.plan(text)
+        self.assertEqual(p['workflow'],'device')
+        self.assertEqual(p['required'],['device_inspection'])
+        self.assertNotIn('tests',p['required']);self.assertNotIn('change',p['required']);self.assertNotIn('reproduction',p['required'])
+    def test_launch_with_source_stays_source_fix(self):
+        (self.root/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
+        p=self.plan('the prettyup app crashes upon opening. fix it')
+        self.assertEqual(p['workflow'],'source_fix');self.assertIn('reproduction',p['required']);self.assertIn('tests',p['required'])
+    def test_locate_named_nested_app(self):
+        app=self.root/'prettyup';app.mkdir();(app/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
+        other=self.root/'other';other.mkdir();(other/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
+        self.assertEqual(task_router.locate_project(self.root,'i have an app prettyup, it crashes upon opening'),app)
     def test_small_tool_surface(self):
         selected=tools(runner.TOOLS,self.plan('Create a Python app'))
         names={x['name'] for x in selected}
@@ -247,6 +261,41 @@ class WorkerTests(unittest.TestCase):
     def test_generation_stop_retains_journal(self):
         with patch.object(runner,'complete',side_effect=runner.Cancelled('stopped')):state=runner.run(job(self.project))
         self.assertEqual(state['status'],'stopped');self.assertTrue(Path(state['journal_file']).exists())
+    def test_launch_crash_without_project_does_not_fake_verification(self):
+        empty=self.root/'empty';empty.mkdir()
+        text='i have an app prettyup, it does not load. crashes upon opening. i want to fix it. built from opensource'
+        def forbidden(*_a,**_k):raise AssertionError('model must not run before a crash is reproduced')
+        with patch.object(runner,'complete',side_effect=forbidden):state=runner.run(job(empty,objective=text,profile='BUILD'))
+        self.assertEqual(state['status'],'failed',state.get('error'))
+        self.assertNotEqual(state.get('verification'),'GOAL_VERIFIED')
+        self.assertIn('Reproduction was not run',state['error'])
+        titles=[a['title'] for a in state['activity']]
+        self.assertNotIn('Verifying the requested outcome',titles)
+        repro=next(a for a in state['activity'] if a['title']=='Reproducing the original failure')
+        self.assertEqual(repro['status'],'failed')
+        self.assertNotIn('"verified": false',repro.get('output',''))
+    def test_captured_crash_without_source_is_not_verified(self):
+        empty=self.root/'empty';empty.mkdir()
+        log={'exit_code':0,'output':'FATAL EXCEPTION: main\nProcess: com.prettyup.app, PID: 12\njava.lang.RuntimeException: boom\n','argv':['logcat']}
+        def forbidden(*_a,**_k):raise AssertionError('model must not claim a fix without source')
+        with patch.object(runner,'device_execute',return_value=log),patch.object(runner,'complete',side_effect=forbidden):
+            state=runner.run(job(empty,objective='prettyup crashes upon opening. fix it',profile='BUILD'))
+        self.assertEqual(state['status'],'blocked',state.get('error'))
+        self.assertNotEqual(state.get('verification'),'GOAL_VERIFIED')
+        self.assertIn('FATAL EXCEPTION',state['result'])
+        self.assertIn('no source',state['error'].lower())
+    def test_nested_named_app_reproduces_its_tests(self):
+        parent=self.root/'box';parent.mkdir();app=parent/'prettyup';app.mkdir();(app/'tests').mkdir()
+        (app/'total.py').write_text('def total(a,b):\n    return a+b+1\n')
+        (app/'tests/test_total.py').write_text('import unittest\nfrom total import total\nclass T(unittest.TestCase):\n    def test_total(self):self.assertEqual(total(2,3),5)\n')
+        with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Everything is fixed.'}):
+            state=runner.run(job(parent,objective='i have an app prettyup, it crashes upon opening. fix it',profile='BUILD'))
+        self.assertTrue((Path(state['workspace'])/'total.py').is_file())
+        self.assertEqual(state['workflow'],'source_fix')
+        self.assertEqual(state['status'],'needs_verification')
+        repro=next(a for a in state['activity'] if a['title']=='Reproducing the original failure')
+        self.assertEqual(repro['status'],'completed')
+        self.assertIn('return a+b+1',(parent/'prettyup'/'total.py').read_text())
 
 
 if __name__=='__main__':unittest.main()

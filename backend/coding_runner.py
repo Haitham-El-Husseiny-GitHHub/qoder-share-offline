@@ -186,6 +186,7 @@ def complete(messages,tools,model=MODEL,progress=None):
 def run(job):
     from job_journal import Journal,recovery_workspace
     from tool_catalog import discover,load_config,public_capabilities
+    import task_router
     from task_router import select
     from router_runtime import Runtime,tools as selected_tools
     job=dict(job);job.setdefault('id',uuid.uuid4().hex)
@@ -258,6 +259,9 @@ def run(job):
             config=load_config();inventory=discover(config)
             journal=Journal(JOBS,job,job.get('resume_from'))
             if job.get('resume_from'):workspace.root=Path(journal.data['workspace']).resolve(strict=True)
+            else:
+                located=task_router.locate_project(workspace.root,job['objective'])
+                if located and located.resolve()!=workspace.root.resolve():workspace.root=located.resolve()
             plan=journal.data.get('plan') or select(workspace.root,job['objective'],job['profile'],inventory,config)
             if not workspace.readonly or any(c['kind'] in plan['required'] for c in plan['checks']):
                 end({'success':True,'workflow':plan['workflow']})
@@ -284,11 +288,37 @@ def run(job):
                 messages.append({'role':'user','content':'The connection interrupted this operation before its outcome was verified: '+json.dumps(journal.data['interrupted_operation'])+'. Inspect existing outputs before retrying it.'})
             available=selected_tools(TOOLS,plan,workspace.readonly)
             end({'success':True,'workflow':plan['workflow'],'workspace':str(workspace.root),'recovery':journal.data['recovery']})
-            if plan['workflow']=='source_fix' and not journal.data['checks']:
+            def observed_failure(checks):
+                return any(c.get('kind') in {'tests','build'} and c.get('exit_code') not in (None,0) for c in checks)
+            if not journal.data['checks'] and (plan['workflow']=='source_fix' or (plan['workflow']=='device' and task_router.launch_failure(job['objective']))):
                 begin('diagnose','Reproducing the original failure')
-                baseline=runtime.verify(True)
-                end({'success':True,'output':json.dumps(compact(baseline))})
-                messages.append({'role':'user','content':'Observed baseline checks: '+json.dumps(compact(baseline))})
+                observed=False;detail='';baseline_error=None;blocked_log=None
+                if plan['checks']:
+                    baseline=runtime.verify(True)
+                    observed=observed_failure(baseline.get('checks',[]))
+                    detail=json.dumps(compact(baseline))
+                    baseline_error=None if observed else 'Planned checks did not fail. The original failure was not reproduced.'
+                elif plan['workflow']=='device':
+                    try:
+                        log=workspace.invoke('device_argv',{'argv':['logcat','-d','-t','200','*:E']})
+                        text=log.get('output') or ''
+                        observed=bool(re.search(r'FATAL EXCEPTION|AndroidRuntime|Fatal signal|has died',text))
+                        detail=text or json.dumps(compact(log))
+                        baseline_error=None if observed else 'logcat contains no fatal exception. The crash was not reproduced.'
+                        if observed and not task_router.project(workspace.root)['source']:blocked_log=detail
+                    except (ValueError,OSError) as exc:
+                        detail=redact(exc);baseline_error='Reproduction was not run: '+detail
+                else:
+                    baseline_error='No project checks in this workspace. Reproduction was not run.'
+                    detail=baseline_error
+                end({'success':bool(observed and not baseline_error),'output':detail,'error':baseline_error})
+                if blocked_log:
+                    state.update(status='blocked',verification='NOT_VERIFIED',result='Crash captured from logcat. This workspace has no source project, so no patch was made.\n'+blocked_log[:4000],error='No source tree to patch. Open the project that builds the app, then run BUILD again.')
+                    return state
+                if not observed:
+                    state.update(status='failed',verification='NOT_VERIFIED',result=baseline_error+'\nWorkspace: '+str(workspace.root),error=baseline_error)
+                    return state
+                messages.append({'role':'user','content':'Observed original failure:\n'+detail[:3000]})
             finish_attempts=0
             for turn in range(plan['max_steps']):
                 begin('generating','Generating coding step '+str(turn+1),'Waiting for the local model');state['turn']=turn+1
@@ -308,7 +338,7 @@ def run(job):
                         return state
                     finish_attempts+=1
                     missing_tools=[s for s in journal.data['steps'] if isinstance(s.get('result'),dict) and s['result'].get('missing_prerequisite')]
-                    if finish_attempts>=2 or missing_tools or not plan['checks'] and any(k in goal['missing'] for k in ('tests','functional','security_validation')):
+                    if finish_attempts>=2 or missing_tools:
                         state.update(status='needs_verification',verification='NOT_VERIFIED',result='Task needs verification: '+', '.join(goal['missing'])+'.\nSaved workspace: '+str(workspace.root),proposed_summary=redact(answer['content']),
                                      error='The requested outcome lacks verification: '+', '.join(goal['missing']))
                         return state

@@ -1,8 +1,11 @@
 """Select a small workflow and enforce evidence-based completion."""
 import json
+import os
 import re
 from pathlib import Path
 from tool_catalog import android_scope, ANDROID_EXCLUDED
+
+_IGNORE={'.git','node_modules','.venv','venv','__pycache__','build','dist','.gradle','.qoder-workspaces','.qoder-worktrees','.qoder-artifacts'}
 
 
 def project(root):
@@ -41,6 +44,37 @@ def project(root):
     return data
 
 
+def launch_failure(text):
+    return bool(re.search(r"\b(crash(?:es|ed)?|does not load|doesn't load|doesnt load|will not open|won't open|upon opening|on opening|on launch|force[- ]close)\b", text.lower()))
+
+
+def locate_project(root, objective=''):
+    """Use the workspace root when it is a project. Otherwise one named or only nested project."""
+    root = Path(root)
+    if project(root)['source']:
+        return root
+    match = re.search(r'\bapp\s+([a-z0-9][a-z0-9._-]{1,40})\b', objective.lower())
+    token = match.group(1).strip('._-') if match else ''
+    found = []
+    for current, dirs, _files in os.walk(root, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in _IGNORE and not d.startswith('.')]
+        here = Path(current)
+        if len(here.relative_to(root).parts) > 2:
+            dirs.clear()
+            continue
+        if here != root and project(here)['source']:
+            found.append(here)
+            if len(found) > 8:
+                break
+    if token:
+        named = [p for p in found if token in p.name.lower()]
+        if len(named) == 1:
+            return named[0]
+    if len(found) == 1:
+        return found[0]
+    return None
+
+
 def select(root, objective, profile, inventory, config):
     detected = project(root)
     text = objective.lower()
@@ -64,6 +98,8 @@ def select(root, objective, profile, inventory, config):
         route, adapters, required = 'api', ['http', 'mitmproxy'], ['api_reproduction', 'api_response']
     elif re.search(r'\b(installed app|logcat|shizuku|permissions|dumpsys|device crash)\b', text) and not detected['source']:
         route, adapters, required = 'device', ['adb', 'rish', 'ui'], ['device_inspection', 'functional']
+    elif not detected['source'] and launch_failure(text):
+        route, adapters, required = 'device', ['adb', 'rish', 'ui'], ['device_inspection']
     elif not detected['source'] and re.search(r'\b(apk|aab|dex|smali)\b', text):
         route, adapters, required = 'apk_inspect', ['jadx', 'apktool', 'apkeditor', 'baksmali', 'bundletool'], ['inspection']
     elif profile == 'REVIEW' or re.search(r'^\s*(explain|inspect|read|summarize|find|search)\b', text):
