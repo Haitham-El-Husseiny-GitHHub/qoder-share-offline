@@ -32,3 +32,8 @@ Rebuild the full offline tools ZIP with the verified ARM64 cache and extra wheel
 Android Installer84 source is in android-installer. Its signing key must match
 the installed installer certificate to support an APK update.
 The terminal installer is independent of the Android installer APK.
+
+# Project policy
+
+The current [Qoder worker policy](Project/QODER-WORKER-POLICY.md) is saved in
+the Project folder and regenerated from the implementation when packaging.

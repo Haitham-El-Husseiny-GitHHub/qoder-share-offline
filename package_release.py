@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a checksum-checked companion update, excluding all phone state."""
 import argparse
+import ast
 import hashlib
 import json
 import zipfile
@@ -9,6 +10,22 @@ from pathlib import Path
 BASE=Path(__file__).resolve().parent
 ROOT_FILES=['WORKBENCH-DESIGN.md','README.md','ENGINEERING_TOOLS.md','VERIFICATION.md','ANDROID_TOOLS.md','install.py','install_offline_tools.py','bootstrap-termux.sh','fetch_model.py','models.json','setup-rish.sh','setup_tools.py','tools.lock.json','package_release.py','package_offline_bundle.py','INSTALLATION-BUILD-83.md']
 EXTENSIONS={'.py','.json','.md','.sh','.js','.html','.java','.yaml','.yml'}
+ROOT_FILES.append('Project/QODER-WORKER-POLICY.md')
+
+
+def sync_worker_policy():
+    source=BASE/'backend/coding_runner.py'
+    tree=ast.parse(source.read_text())
+    policy=next(ast.literal_eval(node.value) for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='WORKER_POLICY' for target in node.targets))
+    path=BASE/'Project/QODER-WORKER-POLICY.md'
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text('# Qoder worker policy\n\n'
+                    'Implemented in [backend/coding_runner.py](../backend/coding_runner.py) as `WORKER_POLICY`.\n'
+                    'The execution guards are in the same file; router tool filtering is in '
+                    '[backend/router_runtime.py](../backend/router_runtime.py).\n\n'
+                    'This document is regenerated from the hardcoded policy by `python3 package_release.py`. '
+                    'Update the implementation first, then regenerate the package manifest so the policy '
+                    'document and checksums stay synchronized.\n\n```text\n'+policy+'\n```\n')
 
 
 def files():
@@ -20,6 +37,7 @@ def files():
 
 
 def manifest():
+    sync_worker_policy()
     hashes={str(p.relative_to(BASE)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files()}
     data={'build':83,'apk_build':79,'kind':'companion-update','baseline_release':'offline-79','sha256':hashes}
     (BASE/'package.json').write_text(json.dumps(data,indent=2)+'\n')
