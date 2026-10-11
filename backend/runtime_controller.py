@@ -11,6 +11,26 @@ def owned(pid):
         args=Path('/proc',str(pid),'cmdline').read_bytes().split(b'\0')
         return str(KEY_FILE).encode() in args and str(PORT).encode() in args and any(b'llama-server' in a for a in args)
     except OSError:return False
+def accel_args(route):
+    """Optional GPU/draft flags from runtime/accel.json; returns (extra_args, env) or ([], None)."""
+    try:
+        cfg=json.loads((RUNTIME/'accel.json').read_text())
+    except Exception:
+        return [],None
+    extra=[];env=None
+    lib=Path(str(cfg.get('gpu_lib_dir','')))
+    if cfg.get('gpu') and (lib/'libOpenCL.so').exists():
+        extra+=['-ngl',str(int(cfg.get('gpu_layers',99))),'--device',str(cfg.get('gpu_device','GPUOpenCL'))]
+        env={**os.environ,'LD_LIBRARY_PATH':str(lib)}
+    draft=(cfg.get('draft') or {}).get(route)
+    if draft:
+        d=Path(draft) if Path(draft).is_absolute() else RUNTIME.parent/draft
+        if d.exists():
+            extra+=['--model-draft',str(d),'-ngld','0','--device-draft','none','--threads-draft','6',
+                    '--spec-draft-n-max',str(int(cfg.get('draft_max',8))),'--spec-draft-n-min','1',
+                    '--cache-type-k-draft','q8_0','--cache-type-v-draft','q8_0']
+    return extra,env
+
 def start(route):
     ensure()
     with (RUNTIME/'server.lock').open('a') as lock:
@@ -44,7 +64,18 @@ def start(route):
             # Only Qoder's own loopback runtime and private key are used.
             log=(RUNTIME/'server.log').open('ab',buffering=0)
             args=['/data/data/com.termux/files/usr/bin/llama-server','--model',str(path),'--alias',model,'--host','127.0.0.1','--port',str(PORT),'--api-key-file',str(KEY_FILE),'--ctx-size',str(context*2),'--parallel','2','--threads','6','--threads-batch','8','--batch-size','512','--ubatch-size','128','--flash-attn','on','--cache-type-k','q8_0','--cache-type-v','q8_0','--cache-ram','0','--ctx-checkpoints','0','--jinja','--reasoning-budget','0','--chat-template-kwargs','{"enable_thinking":false}','--no-webui']
-            proc=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+            extra,env=accel_args(route)
+            proc=subprocess.Popen(args+extra,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True,env=env)
+            if extra:
+                # Accelerated launch must reach health; otherwise fall back to the plain CPU args once.
+                ok=False;deadline2=time.monotonic()+150
+                while time.monotonic()<deadline2 and proc.poll() is None:
+                    try:request('/health');ok=True;break
+                    except Exception:time.sleep(1)
+                if not ok:
+                    if proc.poll() is None:os.killpg(proc.pid,signal.SIGKILL)
+                    log.write(b'accelerated launch failed; falling back to CPU\n')
+                    proc=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
             pid=proc.pid
             state={'pid':pid,'route':route,'model':model,'model_path':str(path),'port':PORT,'parallel':2,'context_window':context,'trained_context_window':limits['trained_context_window'],'context_policy_version':limits['policy_version']}
             temp=STATE.with_suffix('.tmp');temp.write_text(json.dumps(state));temp.chmod(0o600);temp.replace(STATE)
