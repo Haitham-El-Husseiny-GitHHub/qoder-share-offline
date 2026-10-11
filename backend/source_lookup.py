@@ -25,7 +25,8 @@ def preferred_place(text):
     return ''
 
 def _project(path):
-    return any((path/name).exists() for name in MARKERS) or (path/'tests').is_dir() or bool(list(path.glob('test_*.py')))
+    from task_router import python_files
+    return any((path/name).exists() for name in MARKERS) or bool(python_files(path))
 
 def _score(path, token):
     name=path.name.lower().replace('_','-')

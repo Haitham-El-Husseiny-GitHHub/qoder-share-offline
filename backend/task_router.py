@@ -1,8 +1,43 @@
 """Select a small workflow and enforce evidence-based completion."""
 import json
+import os
 import re
 from pathlib import Path
 from tool_catalog import android_scope, ANDROID_EXCLUDED
+
+PYTHON_IGNORED={'.git','node_modules','venv','env','__pycache__','build','dist','runtime','site-packages','vendor'}
+
+
+def python_files(root):
+    """Inspect project-owned Python files without following directory symlinks."""
+    root=Path(root)
+    found=[]
+    for folder,dirs,files in os.walk(root,followlinks=False):
+        dirs[:]=sorted(d for d in dirs if not d.startswith('.') and d not in PYTHON_IGNORED and not (Path(folder)/d).is_symlink())
+        for name in sorted(files):
+            path=Path(folder)/name
+            if name.endswith('.py') and not name.startswith('.') and not path.is_symlink():found.append(path.relative_to(root))
+    return found
+
+
+def python_checks(root, files):
+    root=Path(root)
+    parents={p.parent for p in files if p.name.startswith('test')}
+    starts=[]
+    test_root=Path('tests')
+    if any(parent.is_relative_to(test_root) and all((root/test_root/Path(*parent.relative_to(test_root).parts[:i])/'__init__.py').is_file() for i in range(1,len(parent.relative_to(test_root).parts)+1)) for parent in parents):starts.append(test_root)
+    if Path('.') in parents:starts.append(Path('.'))
+    for parent in sorted(parents,key=lambda p:(len(p.parts),str(p))):
+        covered=False
+        for start in starts:
+            if not parent.is_relative_to(start):continue
+            relative=parent.relative_to(start)
+            # unittest recurses only into importable packages on supported runtimes.
+            if all((root/start/Path(*relative.parts[:i])/'__init__.py').is_file() for i in range(1,len(relative.parts)+1)):
+                covered=True;break
+        if not covered:starts.append(parent)
+    if not starts:starts=[Path('.')]
+    return [{'kind':'tests','argv':['python3','-m','unittest','discover','-s',str(start),'-v']} for start in starts]
 
 
 def project(root):
@@ -25,15 +60,19 @@ def project(root):
         data.update(source=True, kind='android' if android else 'gradle')
         data['checks'] = [{'kind': 'build', 'argv': ['./gradlew', '--offline', 'assembleDebug']},
                           {'kind': 'tests', 'argv': ['./gradlew', '--offline', 'testDebugUnitTest']}]
-    elif (root / 'pyproject.toml').is_file() or (root / 'tests').is_dir() or list(root.glob('test_*.py')):
+    elif (root / 'pyproject.toml').is_file() or (root / 'setup.py').is_file():
         data.update(source=True, kind='python')
-        data['checks'] = [{'kind': 'tests', 'argv': ['python3', '-m', 'unittest', 'discover', '-s', 'tests' if (root / 'tests').is_dir() else '.', '-v']}]
+        data['checks'] = python_checks(root,python_files(root))
     elif (root / 'CMakeLists.txt').exists():
         data.update(source=True, kind='native')
         # Configuration must precede build; the model gets the exact commands.
         data['checks'] = [{'kind': 'configure', 'argv': ['cmake', '-S', '.', '-B', 'qoder-build']},
                           {'kind': 'build', 'argv': ['cmake', '--build', 'qoder-build']},
                           {'kind': 'tests', 'argv': ['ctest', '--test-dir', 'qoder-build', '--output-on-failure']}]
+    else:
+        files=python_files(root)
+        if files:
+            data.update(source=True,kind='python',checks=python_checks(root,files))
     return data
 
 

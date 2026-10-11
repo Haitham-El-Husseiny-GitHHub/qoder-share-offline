@@ -344,3 +344,13 @@ offline Shizuku stop the job. Two identical check failures stop further edits.
 Tool-call turns suppress model commentary. Semantic rules such as selecting
 the first non-test file and keeping a patch to one defect remain explicit
 worker instructions; these require model compliance and review of the diff.
+
+## Recursive Python detection
+
+The router and source lookup recognize Python source and tests below the selected
+workspace without requiring root-level metadata. Dependency, cache, runtime and
+hidden directories are excluded; directory and file symlinks are not followed.
+Unittest checks use explicit nested start directories when folders are not
+importable packages. Existing Node, Gradle and CMake marker precedence is retained.
+A Python source file establishes a project; passing tests still require actual
+test execution and evidence.
