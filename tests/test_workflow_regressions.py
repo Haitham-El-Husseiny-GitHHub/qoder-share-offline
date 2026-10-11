@@ -63,10 +63,10 @@ class RoutingRegressionTests(unittest.TestCase):
 class WorkerRegressionTests(unittest.TestCase):
     setUp=test_backend.WorkerTests.setUp
     tearDown=test_backend.WorkerTests.tearDown
-    def test_repeated_rejected_command_stops_after_two(self):
+    def test_undeclared_command_stops_immediately(self):
         answer={'tool_calls':[{'name':'run_argv','arguments':{'argv':['prettup','app','open']}}],'content':''}
         with patch.object(runner,'complete',return_value=answer) as model:state=runner.run(job(self.project))
-        self.assertEqual(state['status'],'blocked');self.assertEqual(model.call_count,2)
+        self.assertEqual(state['status'],'blocked');self.assertEqual(model.call_count,1)
     def test_absent_baseline_not_shown_as_reproduced(self):
         (self.project/'total.py').write_text('def total(a,b):\n    return a+b\n')
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Done'}):state=runner.run(job(self.project))

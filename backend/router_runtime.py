@@ -47,7 +47,7 @@ def tools(base_tools, plan, readonly=False):
                       {'tool': {'type': 'string', 'enum': selected}, 'operation': {'type': 'string'},
                        'inputs': {'type': 'object', 'properties': input_fields, 'additionalProperties': False},
                        'timeout': {'type': 'integer'}}, ['tool', 'operation', 'inputs']))
-    chosen.append(tool('tool_capabilities', 'Inspect observed tools, access and prerequisites for this workflow.', {}, []))
+    if role!='inspect':chosen.append(tool('tool_capabilities', 'Inspect observed tools, access and prerequisites for this workflow.', {}, []))
     if not readonly and role in {'source_fix','source_build','apk_modify'}:
         chosen.append(tool('unified_patch', 'Preview/apply a unified diff. Existing paths require their observed SHA-256 map.',
                           {'patch': {'type': 'string'}, 'expected_sha256': {'type': 'object', 'additionalProperties': {'type': 'string'}},
@@ -206,10 +206,4 @@ class Runtime:
 
     def prompt(self):
         compact = {k: self.plan[k] for k in ('workflow', 'adapters', 'required', 'checks', 'manager')}
-        return ('\nTask router plan: ' + json.dumps(compact) +
-                '\nInspect prerequisites before using an optional adapter. Prefer source. Missing native tools need a compatible installation or explicitly configured remote worker; never substitute a claim for execution. ' +
-                'Recovery workspace: ' + str(self.ws.root) + '. Use relative paths. ' +
-                'For installed-app tasks, a misspelled app label is not an executable. Use device_argv pm list packages -3, then inspect candidate packages; ask if the match is ambiguous. Use device_argv for logcat and package operations. ' +
-                'After a rejected command, read its error and select a different supported action. ' +
-                'The runner verifies completion after edits and at the end. For repairs the failing test must be observed before editing and the same test must pass afterward. ' +
-                'The worker rejects completion without the required observed checks. Deliver artifact paths and remaining prerequisites accurately.')
+        return '\nPlan JSON: '+json.dumps(compact)+'\nRecovery workspace: '+str(self.ws.root)+'.'

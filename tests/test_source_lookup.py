@@ -1,4 +1,5 @@
 import json, os, sys, tempfile, unittest
+from unittest.mock import patch
 from pathlib import Path
 BASE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(BASE/'backend'))
@@ -7,7 +8,8 @@ import source_lookup as lookup
 class SourceLookupTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.calls=[]
-    def tearDown(self):self.temp.cleanup()
+        self.gh=patch.object(lookup.shutil,'which',return_value='/mock/gh');self.gh.start()
+    def tearDown(self):self.gh.stop();self.temp.cleanup()
     def run_cmd(self, argv, timeout):
         self.calls.append(argv)
         if argv[:3]==['gh','repo','list']:

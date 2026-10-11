@@ -9,6 +9,38 @@ from runtime_config import ROOT,RUNTIME,MODELS,KEY_FILE,ensure,request,stream_co
 JOBS=ROOT/'jobs'
 MODEL=MODELS['phone-code'][0]
 class Cancelled(Exception):pass
+class PolicyViolation(ValueError):pass
+WORKER_POLICY = r'''You are the Qoder worker. The router already chose the workflow, the adapters, and the checks. Do not choose another workflow. Do not search for the source again. Do not describe a plan in content. content stays empty until the same failing check has passed.
+
+Assess the task in this order, then act:
+1. Read the Plan JSON. If workflow is inspect, use only read_file, code_search, and git_diff. Write nothing.
+2. If a failing check or a logcat trace is already in the conversation, that is the defect. Do not invent a second one.
+3. If no failure is present and workflow is source_fix, call diagnose with the check argv. Stop if it passes.
+4. From the failure text, pick the first project file that is not under tests. read_file that path. If the trace names no file, code_search the error string once.
+5. Decide the change from the file you just read. If you cannot point to the exact lines, read one more file. Do not edit yet.
+6. Patch only that defect. Prefer edit_patch with the exact old_text from read_file. expected_sha256 only if read_file returned one. Never invent a hash. write_file only for a new file. unified_patch only when more than one hunk is required.
+7. Stop. The runner reruns the check. If it fails again, read the new trace and patch the new line. After two identical failures, stop calling tools and put the blocker in content.
+
+Choose a tool only from the Tools line. Use this mapping:
+- See a directory: list_files, path "."
+- See code: read_file
+- Find a string: code_search
+- Change existing code: edit_patch
+- Run the project check: diagnose, or run_argv with the check argv and no shell operators
+- See the edit: git_diff
+- Device crash, and device_argv is listed: logcat -d -t 80 AndroidRuntime:E *:S, then pm path only if a package id is known
+- APK, and apk_tools or import_apk is listed: import_apk, then apk_tools info. Do not decompile unless the crash frame is inside that APK.
+- tool_adapter only when that adapter name is in Plan.adapters. operation must be one of the operations named for it. If you do not know the operation, call tool_capabilities once, then stop this turn.
+- Do not call verify_goal. The runner does that.
+- Do not call bridge_status more than once. If Shizuku is offline, say so in content. Do not invent a start command.
+
+Logic rules:
+- A green check is not a defect. Do not edit a passing project.
+- A missing file, a permission denial, or an unknown tool is a stop, not a retry with a different command.
+- One defect per patch. Do not reformat, rename, or add features.
+- Relative paths only. Never read .env, keys, or runtime.
+- At most two tool calls, and the second may only read a file the first result named.
+- Reply with JSON only: {"tool_calls":[{"name":"","arguments":{}}],"content":""}'''
 POLICY="You are an independent local coding agent. Carry out the user's coding objective directly and keep responses focused on the requested technical work. Read project files with read_file before editing. list_files lists directories only; use path dot for the workspace root. Follow workspace AGENTS.md instructions. Use tools to edit files and run tests. Report observed results and actual command exit codes. Explain concrete tool errors when they prevent execution. You already run inside Termux. Use bridge_status to check the installed Rish/Shizuku connection; never invent termux start shizuku rish. If Shizuku is offline, report that it must be started in the Shizuku app. Use device_argv for Android app inspection and management, for example pm list packages, dumpsys package PACKAGE, pm path PACKAGE, logcat -d -t 80, and app permission or state changes requested by the user. Inspect before modifying and preserve app data; do not clear app data or uninstall an app unless the user specifically asks. Device commands run with the current Shizuku identity, not automatically root. Report permission denials accurately; private files and installed APK replacement follow Android permissions and signing rules."
 def tool(name,description,properties,required):
     return {'name':name,'description':description,'parameters':{'type':'object','properties':properties,'required':required,'additionalProperties':False}}
@@ -172,6 +204,52 @@ class Workspace:
             if changed:result.update(success=False,error='Source changed during the command; inspect it and rerun verification.',changed_paths=changed)
         return result
 
+class WorkerGuard:
+    """Validate worker actions against the fixed plan and observed results."""
+    def __init__(self, workspace, plan):
+        self.ws,self.plan=workspace,plan
+        self.reads={};self.counts={};self.previous=None
+    def validate(self, name, args, index=0):
+        if name=='verify_goal':raise ValueError('Verification belongs to the runner.')
+        if self.plan['workflow']=='inspect' and name not in {'read_file','code_search','git_diff'}:raise ValueError('Inspect permits only read_file, code_search and git_diff.')
+        if index:
+            path=args.get('path','')
+            if name!='read_file' or not path or path not in json.dumps(self.previous,ensure_ascii=False):raise ValueError('The second call must read a file named by the first result.')
+        if name in {'bridge_status','tool_capabilities'} and self.counts.get(name,0):raise ValueError(name+' may only be called once.')
+        if name in {'diagnose','run_argv'} and args.get('argv') not in [c['argv'] for c in self.plan['checks']]:raise ValueError('Use the exact check argv from Plan JSON.')
+        if name=='write_file' and self.ws.file(args['path']).exists():raise ValueError('write_file is only for a new file.')
+        if name=='edit_patch':
+            read=self.reads.get(args.get('path'))
+            if not read or not args.get('old_text') or args['old_text'] not in read['content']:raise ValueError('Read the exact old_text before editing.')
+            if args.get('expected_sha256') is not None and args['expected_sha256']!=read.get('sha256'):raise ValueError('Use only the SHA-256 returned by read_file.')
+        if name=='unified_patch' and len(re.findall(r'^@@ ',args.get('patch',''),re.M))<2:raise ValueError('Use edit_patch for a single hunk.')
+        self.counts[name]=self.counts.get(name,0)+1
+    def observe(self, name, result):
+        self.previous=result
+        if name=='read_file' and isinstance(result,dict) and not result.get('error'):self.reads[result['path']]=result
+    @staticmethod
+    def repeated_check_failure(checks):
+        groups={}
+        for check in checks:
+            if check.get('argv'):groups.setdefault(tuple(check['argv']),[]).append(check)
+        for history in groups.values():
+            if len(history)<2:continue
+            a,b=history[-2:]
+            if not a.get('success') and not b.get('success') and any(b.get(k) for k in ('output','error','diagnostics')) and all(a.get(k)==b.get(k) for k in ('exit_code','output','error','diagnostics')):
+                return b.get('error') or b.get('output') or json.dumps(b.get('diagnostics'))
+        return None
+    @staticmethod
+    def blocker(result):
+        if not isinstance(result,dict):return None
+        if result.get('missing_prerequisite'):return result.get('error') or 'Missing prerequisite.'
+        if result.get('policy_violation'):return result['error']
+        if 'rish_connected' in result and not result['rish_connected']:return 'Shizuku is offline.'
+        message=str(result.get('error') or '')
+        if result.get('exit_code') not in (None,0):message+='\n'+str(result.get('output') or '')
+        if re.search(r'no such file|not found|permission denied|permission denial|unknown tool|unavailable|disconnected',message,re.I):return message
+        if isinstance(result.get('shizuku'),dict) and not result['shizuku'].get('connected',True):return 'Shizuku is offline.'
+        return None
+
 def complete(messages,tools,model=MODEL,progress=None):
     ids=[m['id'] for m in request('/v1/models').get('data',[])]
     if ids!=[model]:raise ValueError('The selected Qoder coding model is not loaded.')
@@ -180,12 +258,14 @@ def complete(messages,tools,model=MODEL,progress=None):
     schema={'type':'object','properties':{'tool_calls':{'type':'array','maxItems':2,'items':call_schema},'content':{'type':'string'}},'required':['tool_calls','content'],'additionalProperties':False}
     prompt=[dict(m) for m in messages]
     guide=json.dumps([{'name':t['name'],'description':t['description'],'inputs':{k:(v.get('enum') or v.get('type')) for k,v in t['parameters']['properties'].items()},'required':t['parameters']['required']} for t in tools],separators=(',',':'))
-    prompt[0]['content']=prompt[0]['content']+'\nTools: '+guide+'\nReply with JSON only: {"tool_calls":[{"name":"tool","arguments":{}}],"content":""}. At most 2 calls. Leave content empty until the required checks have passed.'
+    prompt[0]['content']=prompt[0]['content']+'\nTools: '+guide
     content=stream_completion({'model':model,'messages':prompt,'temperature':0,'max_tokens':384,'response_format':{'type':'json_schema','json_schema':{'name':'coding_turn','strict':True,'schema':schema}}},progress=progress,timeout=180)
     parsed=json.loads(content)
     if not isinstance(parsed,dict) or not isinstance(parsed.get('tool_calls'),list) or not isinstance(parsed.get('content'),str):raise ValueError('Model returned an invalid coding turn.')
     known=set(names)
     if len(parsed['tool_calls'])>2 or any(not isinstance(c,dict) or c.get('name') not in known or not isinstance(c.get('arguments'),dict) for c in parsed['tool_calls']):raise ValueError('Invalid tool call; nothing executed.')
+    if len(parsed['tool_calls'])==2 and parsed['tool_calls'][1]['name']!='read_file':raise ValueError('The second call may only read a file named by the first result.')
+    if parsed['tool_calls']:parsed['content']=''
     return parsed
 
 def run(job):
@@ -298,7 +378,8 @@ def run(job):
             state.update(workspace=str(workspace.root),target=job['workspace'],workflow=plan['workflow'],
                          recovery=journal.data['recovery'],capabilities=public_capabilities(inventory),required_verification=plan['required'],
                          resumed_from=job.get('resume_from'))
-            policy=('Use tools and report observed results. Follow AGENTS.md. Read before editing. Preserve app data, originals and keys. Do not clear data or uninstall unless explicitly requested. Rish is shell access, not automatic root. '+runtime.prompt())
+            policy=WORKER_POLICY+'\n'+runtime.prompt()
+            worker_guard=WorkerGuard(workspace,plan)
             p=workspace.file('AGENTS.md')
             if p.exists():policy+='\nWorkspace instructions:\n'+p.read_text()[:4000]
             prior=journal.data.get('messages',[])
@@ -363,7 +444,7 @@ def run(job):
                         return state
                     messages.append({'role':'user','content':'Completion withheld. Obtain the missing evidence: '+json.dumps(goal['missing'])+'. Inspect failing check results and revise the solution.'})
                     continue
-                for call in answer['tool_calls']:
+                for call_index,call in enumerate(answer['tool_calls']):
                     name=call['name'];args=call['arguments']
                     title={'read_file':'Reading file','write_file':'Writing file','list_files':'Listing folder','run_argv':'Running command','bridge_status':'Checking Termux and Rish','device_argv':'Android app operation','code_search':'Searching code','edit_patch':'Applying patch','git_diff':'Inspecting Git changes','diagnose':'Checking build diagnostics','apk_tools':'Analyzing APK','import_apk':'Importing installed APK','tool_adapter':'Running '+str(args.get('tool','tool'))+' '+str(args.get('operation','')),'tool_capabilities':'Checking available tools','verify_goal':'Verifying outcome','unified_patch':'Applying unified patch'}[name]
                     detail=' '.join(args.get('argv',[])) if name in {'run_argv','device_argv','diagnose'} else args.get('path') or args.get('package') or args.get('pattern','')
@@ -371,11 +452,18 @@ def run(job):
                     journal.begin(name,args)
                     revision_before=journal.data['revision']
                     try:
+                        try:worker_guard.validate(name,args,call_index)
+                        except ValueError as exc:raise PolicyViolation(str(exc)) from exc
                         if journal.repeated_failures(name,args)>=plan['max_identical_failures']:raise ValueError('Repeated identical failure: inspect the prior error and choose a different evidence-based step.')
                         result=workspace.invoke(name,args)
-                    except (ValueError,OSError,KeyError,TypeError) as exc:result={'error':redact(exc)}
+                    except (ValueError,OSError,KeyError,TypeError) as exc:result={'error':redact(exc),'policy_violation':isinstance(exc,PolicyViolation)}
+                    worker_guard.observe(name,result)
                     end(result)
                     record(name,args,result)
+                    blocker=worker_guard.blocker(result)
+                    if blocker:
+                        state.update(status='blocked',verification='NOT_VERIFIED',error=blocker,result=blocker)
+                        return state
                     if journal.repeated_failures(name,args)>=plan['max_identical_failures']:
                         state.update(status='blocked',verification='NOT_VERIFIED',
                                      error='Repeated identical tool failures; stopped to preserve evidence.',
@@ -390,7 +478,14 @@ def run(job):
                         if goal['verified']:
                             state.update(status='completed',verification='GOAL_VERIFIED',result='Verified after the edit.\nVerified workspace: '+str(workspace.root))
                             return state
-                        messages.append({'role':'user','content':'The edit did not pass the same check. Missing: '+json.dumps(goal['missing'])+'. Patch the cited cause. Do not repeat an identical edit.'})
+                        repeated=worker_guard.repeated_check_failure(journal.data['checks'])
+                        if repeated:
+                            state.update(status='blocked',verification='NOT_VERIFIED',error='Two identical check failures.',result=redact(repeated))
+                            return state
+                        trace=[{k:c.get(k) for k in ('argv','exit_code','output','error','diagnostics')} for c in goal.get('checks',[])[-4:] if not c.get('success')]
+                        messages.append({'role':'user','content':'The edit did not pass the same check. New trace: '+redact(json.dumps(trace))[:6000]+'. Read the new trace and patch the cited line.'})
+                        break
+                    if name=='tool_capabilities':break
             raise ValueError('Coding step limit reached; evidence saved.')
     except Cancelled:
         state.update(status='stopped',result='Stopped by you. Completed file changes and operation history are retained.')

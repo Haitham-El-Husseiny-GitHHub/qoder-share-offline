@@ -249,8 +249,9 @@ class WorkerTests(unittest.TestCase):
         for p in reversed(self.patches):p.stop()
         self.temp.cleanup()
     def edit(self):return {'tool_calls':[{'name':'edit_patch','arguments':{'path':'total.py','old_text':'return a+b+1','new_text':'return a+b','expected_sha256':fingerprint(self.project/'total.py')}}],'content':''}
+    def read(self):return {'tool_calls':[{'name':'read_file','arguments':{'path':'total.py'}}],'content':''}
     def test_real_failure_patch_test_and_original_retained(self):
-        with patch.object(runner,'complete',side_effect=[self.edit(),{'tool_calls':[],'content':'Repaired total.'}]):state=runner.run(job(self.project))
+        with patch.object(runner,'complete',side_effect=[self.read(),self.edit(),{'tool_calls':[],'content':'Repaired total.'}]):state=runner.run(job(self.project))
         self.assertEqual(state['status'],'completed',state.get('error'));self.assertEqual(state['verification'],'GOAL_VERIFIED')
         self.assertIn('a+b+1',(self.project/'total.py').read_text());self.assertIn('return a+b\n',(Path(state['workspace'])/'total.py').read_text())
         checks=state['verification_results']['checks'];self.assertTrue(any(c['exit_code']==1 for c in checks));self.assertTrue(any(c['exit_code']==0 and c['revision']==1 for c in checks))
@@ -266,7 +267,7 @@ class WorkerTests(unittest.TestCase):
                 calls['n']+=1
                 if calls['n']==2:raise runner.Cancelled('disconnect')
             return original(self, argv, **kwargs)
-        with patch.object(runner.Workspace,'command',command),patch.object(runner,'complete',return_value=self.edit()):stopped=runner.run(job(self.project))
+        with patch.object(runner.Workspace,'command',command),patch.object(runner,'complete',side_effect=[self.read(),self.edit()]):stopped=runner.run(job(self.project))
         self.assertEqual(stopped['status'],'stopped',stopped.get('error'))
         next_job=job(self.project,'b'*32);next_job['resume_from']='a'*32
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Recovered and verified.'}):state=runner.run(next_job)

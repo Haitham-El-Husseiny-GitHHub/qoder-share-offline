@@ -327,3 +327,20 @@ Each operation remains sequential. Repeated failures stop after two identical
 failures; evidence, diagnostics and resume state remain persisted. Remaining
 limitations from the previous sections (package-label matching, probes, update
 rollback and OS network isolation) still apply.
+
+# Worker policy
+
+The fixed worker policy is embedded in `backend/coding_runner.py` as
+`WORKER_POLICY` and supplied intact before the Plan JSON and Tools line.
+The worker uses the router's workflow and checks; source discovery stays outside
+the worker. Verification belongs to the runner.
+
+Execution guards require observed exact text and hashes for existing-file
+patches, declared check argv, new-file-only writes, and read-only inspection.
+Each turn allows at most two calls; the second can only read a file named by
+the first result. Capability discovery ends the turn. Successful patches yield
+to runner verification. Missing files, permission denials, unknown tools and
+offline Shizuku stop the job. Two identical check failures stop further edits.
+Tool-call turns suppress model commentary. Semantic rules such as selecting
+the first non-test file and keeping a patch to one defect remain explicit
+worker instructions; these require model compliance and review of the diff.
