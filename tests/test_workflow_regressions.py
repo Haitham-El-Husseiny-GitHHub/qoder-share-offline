@@ -90,6 +90,17 @@ class OfflineGuardTests(unittest.TestCase):
         for url in ['https://example.com','http://192.168.8.1','http://localhost.evil.test']:self.assertFalse(local_url(url))
     def test_redirect_cannot_escape_offline(self):
         with self.assertRaisesRegex(ValueError,'redirect'):LocalRedirects().redirect_request(None,None,302,'',{},'https://example.com')
+    def test_runtime_refuses_network_before_subprocess(self):
+        with tempfile.TemporaryDirectory() as root:
+            ws=runner.Workspace(root,False);ws.runtime=type('Config',(),{'config':{'offline':True}})()
+            with patch.object(runner.subprocess,'Popen') as spawn,self.assertRaisesRegex(ValueError,'Offline'):
+                ws.command(['git','fetch'])
+            spawn.assert_not_called()
+    def test_source_discovery_does_not_contact_remote_services_offline(self):
+        import source_lookup
+        with tempfile.TemporaryDirectory() as root,patch.object(source_lookup,'github_repos') as github,patch.object(source_lookup,'cloudflare_projects') as cloud:
+            source_lookup.acquire('prettup app installed but crashes',root,config={'offline':True},device=None)
+            github.assert_not_called();cloud.assert_not_called()
     def test_remote_http_rejected_before_execution(self):
         with tempfile.TemporaryDirectory() as root:
             ws=runner.Workspace(root,False)

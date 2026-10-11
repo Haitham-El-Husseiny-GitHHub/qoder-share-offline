@@ -17,6 +17,7 @@ BASE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(BASE/'backend'))
 import coding_runner as runner
 import engineering_tools
+import source_lookup
 import tool_adapters
 import tool_catalog
 import task_router
@@ -126,6 +127,26 @@ class RouterTests(unittest.TestCase):
         j.check('tests',{'exit_code':1},['pytest','test_bug.py']);j.data['revision']=1
         j.check('tests',{'exit_code':0},['pytest','test_other.py']);self.assertFalse(task_router.evidence(j)['verified'])
         j.check('tests',{'exit_code':0},['pytest','test_bug.py']);self.assertTrue(task_router.evidence(j)['verified'])
+    def test_launch_without_source_is_device_not_fake_source_fix(self):
+        text='i have an app prettyup, it does not load. crashes upon opening. i want to fix it. built from opensource'
+        p=self.plan(text)
+        self.assertEqual(p['workflow'],'device')
+        self.assertEqual(p['required'],['device_inspection','functional'])
+        self.assertNotIn('tests',p['required']);self.assertNotIn('change',p['required']);self.assertNotIn('reproduction',p['required'])
+    def test_launch_with_source_stays_source_fix(self):
+        (self.root/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
+        p=task_router.select(self.root,'the prettyup app crashes upon opening. fix it','BUILD',self.caps,{'target_source_confirmed':True})
+        self.assertEqual(p['workflow'],'source_fix');self.assertIn('reproduction',p['required']);self.assertIn('tests',p['required'])
+    def test_locate_named_nested_app(self):
+        app=self.root/'prettyup';app.mkdir();(app/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
+        other=self.root/'other';other.mkdir();(other/'package.json').write_text(json.dumps({'scripts':{'test':'node --test'}}))
+        self.assertEqual(task_router.locate_project(self.root,'i have an app prettyup, it crashes upon opening'),app)
+    def test_failure_brief_loads_cited_source_not_the_test(self):
+        (self.root/'total.py').write_text('def total(a,b):\n    return a+b+1\n')
+        (self.root/'tests').mkdir();(self.root/'tests'/'test_total.py').write_text('def test_total():\n    assert False\n')
+        output='File "%s", line 2, in total\nFile "%s", line 2, in test_total\n'%(self.root/'total.py',self.root/'tests'/'test_total.py')
+        brief=task_router.failure_brief(self.root, output)
+        self.assertIn('total.py',brief);self.assertIn('return a+b+1',brief);self.assertNotIn('assert False',brief)
     def test_small_tool_surface(self):
         selected=tools(runner.TOOLS,self.plan('Create a Python app'))
         names={x['name'] for x in selected}
@@ -222,7 +243,7 @@ class WorkerTests(unittest.TestCase):
         (self.project/'tests/test_total.py').write_text('import unittest\nfrom total import total\nclass TestTotal(unittest.TestCase):\n    def test_total(self):self.assertEqual(total(2,3),5)\n')
         self.runtime=self.root/'runtime';self.runtime.mkdir()
         caps=inventory()
-        self.patches=[patch.object(runner,'JOBS',self.root/'jobs'),patch.object(runner,'RUNTIME',self.runtime),patch.object(runner,'ensure',return_value=None),patch.object(tool_catalog,'discover',return_value=caps)]
+        self.patches=[patch.object(runner,'JOBS',self.root/'jobs'),patch.object(runner,'RUNTIME',self.runtime),patch.object(runner,'ensure',return_value=None),patch.object(tool_catalog,'discover',return_value=caps),patch.object(source_lookup,'github_repos',return_value={'available':False,'repos':[]})]
         for p in self.patches:p.start()
     def tearDown(self):
         for p in reversed(self.patches):p.stop()
@@ -238,8 +259,15 @@ class WorkerTests(unittest.TestCase):
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Everything is fixed.'}):state=runner.run(job(self.project))
         self.assertEqual(state['status'],'needs_verification');self.assertNotEqual(state['verification'],'GOAL_VERIFIED')
     def test_stop_resume_does_not_repeat_patch(self):
-        with patch.object(runner,'complete',side_effect=[self.edit(),runner.Cancelled('disconnect')]):stopped=runner.run(job(self.project))
-        self.assertEqual(stopped['status'],'stopped')
+        calls={'n':0}
+        original=runner.Workspace.command
+        def command(self, argv, **kwargs):
+            if argv[:3]==['python3','-m','unittest']:
+                calls['n']+=1
+                if calls['n']==2:raise runner.Cancelled('disconnect')
+            return original(self, argv, **kwargs)
+        with patch.object(runner.Workspace,'command',command),patch.object(runner,'complete',return_value=self.edit()):stopped=runner.run(job(self.project))
+        self.assertEqual(stopped['status'],'stopped',stopped.get('error'))
         next_job=job(self.project,'b'*32);next_job['resume_from']='a'*32
         with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Recovered and verified.'}):state=runner.run(next_job)
         self.assertEqual(state['status'],'completed',state.get('error'));self.assertEqual(len(state['patches']),1)
@@ -247,6 +275,26 @@ class WorkerTests(unittest.TestCase):
     def test_generation_stop_retains_journal(self):
         with patch.object(runner,'complete',side_effect=runner.Cancelled('stopped')):state=runner.run(job(self.project))
         self.assertEqual(state['status'],'stopped');self.assertTrue(Path(state['journal_file']).exists())
+    def test_launch_crash_without_project_stays_unverified(self):
+        empty=self.root/'empty';empty.mkdir()
+        with patch.object(runner,'device_execute',return_value={'exit_code':0,'output':''}),patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Not verified'}):
+            state=runner.run(job(empty,objective='prettyup app installed but not opening up',profile='BUILD'))
+        self.assertEqual(state['workflow'],'device')
+        self.assertEqual(state['status'],'needs_verification')
+        self.assertNotEqual(state.get('verification'),'GOAL_VERIFIED')
+
+    def test_nested_named_app_reproduces_its_tests(self):
+        parent=self.root/'box';parent.mkdir();app=parent/'prettyup';app.mkdir();(app/'tests').mkdir()
+        (app/'total.py').write_text('def total(a,b):\n    return a+b+1\n')
+        (app/'tests/test_total.py').write_text('import unittest\nfrom total import total\nclass T(unittest.TestCase):\n    def test_total(self):self.assertEqual(total(2,3),5)\n')
+        with patch.object(runner,'complete',return_value={'tool_calls':[],'content':'Everything is fixed.'}):
+            state=runner.run(job(parent,objective='i have an app prettyup, it crashes upon opening. fix it',profile='BUILD'))
+        self.assertTrue((Path(state['workspace'])/'total.py').is_file())
+        self.assertEqual(state['workflow'],'source_fix')
+        self.assertEqual(state['status'],'needs_verification')
+        repro=next(a for a in state['activity'] if a['title']=='Checking the failure baseline')
+        self.assertEqual(repro['status'],'completed')
+        self.assertIn('return a+b+1',(parent/'prettyup'/'total.py').read_text())
 
 
 if __name__=='__main__':unittest.main()

@@ -50,3 +50,9 @@ The current small companion includes the Shizuku bridge fix: Rish identity
 output can arrive on stderr, so both streams are checked. Always extract and
 use the separate verified companion above; the full tools cache is retained
 without a large re-download for this backend hotfix.
+
+The current small companion also repairs installed-app routing, repeat-failure
+handling, baseline reporting, stale verification reuse, signature evidence,
+and offline fetch guards. WORKBENCH-DESIGN.md describes the corrected workflow
+and remaining implementation gaps. Offline source discovery stays on the phone;
+GitHub/Cloudflare discovery requires explicitly online configuration.

@@ -3,15 +3,35 @@
   "execution_platform": "android",
   "commands": {},
   "language_servers": {
-    "typescript": ["typescript-language-server", "--stdio"],
-    "javascript": ["typescript-language-server", "--stdio"],
-    "python": ["pylsp"],
-    "c": ["clangd"],
-    "cpp": ["clangd"]
+    "typescript": [
+      "typescript-language-server",
+      "--stdio"
+    ],
+    "javascript": [
+      "typescript-language-server",
+      "--stdio"
+    ],
+    "python": [
+      "pylsp"
+    ],
+    "c": [
+      "clangd"
+    ],
+    "cpp": [
+      "clangd"
+    ]
   },
   "signing": {},
-  "remote": {"enabled": false},
+  "source_roots": [],
+  "cloudflare": {
+    "account_id": "",
+    "api_token_file": ""
+  },
+  "remote": {
+    "enabled": false
+  },
   "mobsf": {},
   "verification_commands": [],
-  "worktrees": true
+  "worktrees": true,
+  "offline": true
 }

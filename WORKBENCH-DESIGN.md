@@ -9,7 +9,7 @@ works on every Android release. Acceptance requires observed device evidence.
 | Defect | Correction / implementation boundary |
 | --- | --- |
 | Installed app intent lost when unrelated project tests exist | Explicit installed-app intent takes the device route; explicit source filenames retain the source route. Implemented with regression tests. |
-| Typo treated as executable | Device workflow exposes package/logcat tools and instructs package discovery before action. Prompt guidance implemented; deterministic fuzzy label-to-package resolution remains future work. |
+| Typo treated as executable | Device workflow exposes package/logcat tools and instructs package discovery before action. Bounded local source/package discovery and prompt guidance implemented; deterministic fuzzy label-to-package resolution remains future work. |
 | Green reproduction card without reproduction | Baseline card reports failure unless a non-prerequisite failing check was observed. Implemented. A failing test alone may still be unrelated to the requested bug; inspect its diagnostics. |
 | Rejected command repeated indefinitely | Two identical failures at the same source revision stop the job as blocked. Implemented. Semantic detection of differently phrased repetitions remains future work. |
 | Old successful check reused after later failure | Only the latest identical command at the current revision can be reused. Implemented. |
@@ -146,8 +146,9 @@ without reconciling its PID and pending step. Resume does not undo Android actio
 Inspect target intent and project markers before selecting tools. Explicit APK
 modification, installed-app diagnostics and explicit source-file edits must not
 be overridden by unrelated files. Source is preferred only when it belongs to
-the requested target. Current marker detection reads the selected root; project
-subdirectory discovery and explicit target disambiguation remain limited.
+the requested target. Bounded discovery searches named local project subdirectories; confirmed matching
+source can select source repair. Explicit target identity/disambiguation remains
+limited. Unrelated source must not override an installed-app task.
 
 For an app label with a typo, discover installed package candidates, inspect
 metadata, and resolve one package; request clarification if ambiguous. Never
@@ -165,11 +166,14 @@ Choose the smallest sufficient tools and outcomes, then:
 4. Run one adapter operation, inspect its structured result, persist it, update UI.
 5. Revise strategy from evidence; stop after two identical failures or a hard
    prerequisite blocker. No repeated unsupported executable guessing.
-6. Verify the requested outcome at the current revision. Do not equate a
+6. After an edit, automatically run planned checks; stop immediately when the
+   requested outcome is verified at the current revision. Do not equate a
    command's zero exit code with the product goal.
 7. Export artifacts/diff and report missing evidence accurately.
 
-Remote execution is disabled in the current Android-only scope. An explicitly
+Source discovery contacts GitHub/Cloudflare only when explicitly online; offline
+jobs search local projects and installed packages. Remote execution is disabled
+in the current Android-only scope. An explicitly
 configured remote worker would be a separate online mode and requires transfer,
 privacy, architecture and artifact-integrity contracts; this is not implemented
 as a route for offline phone jobs.
