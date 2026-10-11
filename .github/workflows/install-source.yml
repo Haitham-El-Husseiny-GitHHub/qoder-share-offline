@@ -12,6 +12,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Install test prerequisites
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: python install.py --check
       - run: python -m unittest discover -s tests -v
       - run: |
