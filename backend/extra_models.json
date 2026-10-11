@@ -11,17 +11,6 @@
     "sha256": "b4ebb19a7ea706b107f6b3d78ca31dce7005a84ea31da2b14437e2b2cca68a58"
   },
   {
-    "route": "phi-code",
-    "mode": "phi",
-    "id": "Phi-3.5-Mini-Uncensored",
-    "name": "Phi 3.5 Mini",
-    "file": "Phi-3.5-mini-instruct_Uncensored-Q4_K_M.gguf",
-    "repo": "bartowski/Phi-3.5-mini-instruct_Uncensored-GGUF",
-    "revision": "ee8d5d6896f1ac8d0f95f7dff87bc2b2d7aa6e72",
-    "size": 2393232448,
-    "sha256": "9ad0e44f9441c0ffb4adc8f3bd3a9ba3d662aaa82f617a6dfbff6d4ae31a946d"
-  },
-  {
     "route": "qwen35-code",
     "mode": "qwen35",
     "id": "Huihui-Qwen3.5-4B-Abliterated",
