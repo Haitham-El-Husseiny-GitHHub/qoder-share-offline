@@ -185,8 +185,4 @@ class Runtime:
 
     def prompt(self):
         compact = {k: self.plan[k] for k in ('workflow', 'adapters', 'required', 'checks', 'manager')}
-        return ('\nTask router plan: ' + json.dumps(compact) +
-                '\nInspect prerequisites before using an optional adapter. Prefer source. Missing native tools need a compatible installation or explicitly configured remote worker; never substitute a claim for execution. ' +
-                'Recovery workspace: ' + str(self.ws.root) + '. Use relative paths. ' +
-                'Call verify_goal after changes. For repairs the failing test must be observed before editing and the same test must pass afterward. ' +
-                'The worker rejects completion without the required observed checks. Deliver artifact paths and remaining prerequisites accurately.')
+        return ('\nPlan: '+json.dumps(compact)+'\nUse relative paths. After a real edit, the same failing check must pass. verify_goal is enforced by the runner.')

@@ -10,6 +10,8 @@
     "cpp": ["clangd"]
   },
   "signing": {},
+  "source_roots": [],
+  "cloudflare": {"account_id": "", "api_token_file": ""},
   "remote": {"enabled": false},
   "mobsf": {},
   "verification_commands": [],

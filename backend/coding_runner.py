@@ -169,18 +169,17 @@ class Workspace:
 def complete(messages,tools,model=MODEL,progress=None):
     ids=[m['id'] for m in request('/v1/models').get('data',[])]
     if ids!=[model]:raise ValueError('The selected Qoder coding model is not loaded.')
-    properties={}
-    for t in tools:properties.update(t['parameters']['properties'])
-    call_schema={'type':'object','properties':{'name':{'type':'string','enum':[t['name'] for t in tools]},'arguments':{'type':'object','properties':properties,'additionalProperties':False}},'required':['name','arguments'],'additionalProperties':False}
+    names=[t['name'] for t in tools]
+    call_schema={'type':'object','properties':{'name':{'type':'string','enum':names},'arguments':{'type':'object','additionalProperties':True}},'required':['name','arguments'],'additionalProperties':False}
     schema={'type':'object','properties':{'tool_calls':{'type':'array','maxItems':2,'items':call_schema},'content':{'type':'string'}},'required':['tool_calls','content'],'additionalProperties':False}
     prompt=[dict(m) for m in messages]
-    guide=[{'name':t['name'],'description':t['description'],'inputs':{k:(v.get('enum') or v.get('type')) for k,v in t['parameters']['properties'].items()},'required':t['parameters']['required']} for t in tools]
-    prompt[0]['content']+='\nRespond with JSON containing tool_calls and content. Execute 1 or 2 short tool calls per turn, leaving content empty. Finish with no tool calls and an observed result in content. Tools: '+json.dumps(guide,separators=(',',':'))
-    content=stream_completion({'model':model,'messages':prompt,'temperature':.2,'max_tokens':384,'response_format':{'type':'json_schema','json_schema':{'name':'coding_turn','strict':True,'schema':schema}}},progress=progress,timeout=600)
+    guide='; '.join(t['name']+'('+','.join(t['parameters']['required'])+')' for t in tools)
+    prompt[0]['content']=prompt[0]['content'][:700]+'\nTools: '+guide+'\nReply with JSON only: {"tool_calls":[{"name":"tool","arguments":{}}],"content":""}. At most 2 calls. Leave content empty until the required checks have passed.'
+    content=stream_completion({'model':model,'messages':prompt,'temperature':0,'max_tokens':256,'response_format':{'type':'json_schema','json_schema':{'name':'coding_turn','strict':True,'schema':schema}}},progress=progress,timeout=180)
     parsed=json.loads(content)
     if not isinstance(parsed,dict) or not isinstance(parsed.get('tool_calls'),list) or not isinstance(parsed.get('content'),str):raise ValueError('Model returned an invalid coding turn.')
-    names={t['name'] for t in tools}
-    if len(parsed['tool_calls'])>2 or any(not isinstance(c,dict) or c.get('name') not in names or not isinstance(c.get('arguments'),dict) for c in parsed['tool_calls']):raise ValueError('Invalid tool call; nothing executed.')
+    known=set(names)
+    if len(parsed['tool_calls'])>2 or any(not isinstance(c,dict) or c.get('name') not in known or not isinstance(c.get('arguments'),dict) for c in parsed['tool_calls']):raise ValueError('Invalid tool call; nothing executed.')
     return parsed
 
 def run(job):
@@ -188,6 +187,7 @@ def run(job):
     from tool_catalog import discover,load_config,public_capabilities
     import task_router
     from task_router import select
+    import source_lookup
     from router_runtime import Runtime,tools as selected_tools
     job=dict(job);job.setdefault('id',uuid.uuid4().hex)
     ensure();JOBS.mkdir(mode=0o700,exist_ok=True)
@@ -258,9 +258,19 @@ def run(job):
             begin('prepare','Inspecting tools, files and access')
             config=load_config();inventory=discover(config)
             journal=Journal(JOBS,job,job.get('resume_from'))
+            lookup=None
             if job.get('resume_from'):workspace.root=Path(journal.data['workspace']).resolve(strict=True)
             else:
-                located=task_router.locate_project(workspace.root,job['objective'])
+                if source_lookup.app_token(job['objective']):
+                    end({'success':True,'output':'Tool access checked.'})
+                    begin('prepare','Locating app source',source_lookup.app_token(job['objective']))
+                    def device_query(argv):return workspace.invoke('device_argv',{'argv':argv})
+                    lookup=source_lookup.acquire(job['objective'],workspace.root,device=device_query,config=config)
+                    if lookup.get('root'):workspace.root=Path(lookup['root']).resolve()
+                    state['source_lookup']=source_lookup.public(lookup)
+                    end({'success':bool(lookup.get('root')),'output':json.dumps(state['source_lookup'])[:4000]})
+                    active=None
+                located=None if lookup and lookup.get('root') else task_router.locate_project(workspace.root,job['objective'])
                 if located and located.resolve()!=workspace.root.resolve():workspace.root=located.resolve()
             plan=journal.data.get('plan') or select(workspace.root,job['objective'],job['profile'],inventory,config)
             if not workspace.readonly or any(c['kind'] in plan['required'] for c in plan['checks']):
@@ -274,14 +284,13 @@ def run(job):
             state.update(workspace=str(workspace.root),target=job['workspace'],workflow=plan['workflow'],
                          recovery=journal.data['recovery'],capabilities=public_capabilities(inventory),required_verification=plan['required'],
                          resumed_from=job.get('resume_from'))
-            policy=('You are an offline coding agent. Execute the task with tools and report only observed results. Follow AGENTS.md. Read before editing; use exact checksum patches. '
-                    'Use relative workspace paths and the smallest sufficient tools. Diagnose errors before changing strategy. Never invent access, successful builds or tests. '
-                    'Keep original APKs and app data. Rish/Shizuku permissions and signing certificates apply. Do not uninstall or clear data unless explicitly requested. '
-                    'Tool errors are evidence; missing prerequisites block completion. Use verify_goal to verify the actual outcome.')+runtime.prompt()
+            policy=('Fix the task with tools. Use relative paths. Read a file before editing it. Do not claim a result you did not run. '+runtime.prompt())
             p=workspace.file('AGENTS.md')
-            if p.exists():policy+='\nWorkspace instructions:\n'+p.read_text()[:4000]
+            if p.exists():policy+='\nWorkspace instructions:\n'+p.read_text()[:800]
             prior=journal.data.get('messages',[])
             messages=[{'role':'system','content':policy},{'role':'user','content':job['objective']}]
+            if lookup and lookup.get('token'):
+                messages.append({'role':'user','content':'Source already located. Do not search again.\n'+json.dumps(source_lookup.public(lookup))[:1200]})
             if prior:messages+=prior[2:][-6:]
             elif job.get('history'):messages[1:1]=job['history'][-4:]
             if journal.data.get('interrupted_operation'):
@@ -300,7 +309,7 @@ def run(job):
                     baseline_error=None if observed else 'Planned checks did not fail. The original failure was not reproduced.'
                 elif plan['workflow']=='device':
                     try:
-                        log=workspace.invoke('device_argv',{'argv':['logcat','-d','-t','200','*:E']})
+                        log=workspace.invoke('device_argv',{'argv':['logcat','-d','-t','80','AndroidRuntime:E','*:S']})
                         text=log.get('output') or ''
                         observed=bool(re.search(r'FATAL EXCEPTION|AndroidRuntime|Fatal signal|has died',text))
                         detail=text or json.dumps(compact(log))
@@ -316,7 +325,8 @@ def run(job):
                     state.update(status='blocked',verification='NOT_VERIFIED',result='Crash captured from logcat. This workspace has no source project, so no patch was made.\n'+blocked_log[:4000],error='No source tree to patch. Open the project that builds the app, then run BUILD again.')
                     return state
                 if not observed:
-                    state.update(status='failed',verification='NOT_VERIFIED',result=baseline_error+'\nWorkspace: '+str(workspace.root),error=baseline_error)
+                    if lookup and not lookup.get('root'):baseline_error=(baseline_error or '')+' '+((lookup.get('chosen') or {}).get('reason') or '')
+                    state.update(status='failed',verification='NOT_VERIFIED',result=baseline_error+'\nWorkspace: '+str(workspace.root),error=baseline_error.strip())
                     return state
                 messages.append({'role':'user','content':'Observed original failure:\n'+detail[:3000]})
             finish_attempts=0

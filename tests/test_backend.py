@@ -17,6 +17,7 @@ BASE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(BASE/'backend'))
 import coding_runner as runner
 import engineering_tools
+import source_lookup
 import tool_adapters
 import tool_catalog
 import task_router
@@ -236,7 +237,7 @@ class WorkerTests(unittest.TestCase):
         (self.project/'tests/test_total.py').write_text('import unittest\nfrom total import total\nclass TestTotal(unittest.TestCase):\n    def test_total(self):self.assertEqual(total(2,3),5)\n')
         self.runtime=self.root/'runtime';self.runtime.mkdir()
         caps=inventory()
-        self.patches=[patch.object(runner,'JOBS',self.root/'jobs'),patch.object(runner,'RUNTIME',self.runtime),patch.object(runner,'ensure',return_value=None),patch.object(tool_catalog,'discover',return_value=caps)]
+        self.patches=[patch.object(runner,'JOBS',self.root/'jobs'),patch.object(runner,'RUNTIME',self.runtime),patch.object(runner,'ensure',return_value=None),patch.object(tool_catalog,'discover',return_value=caps),patch.object(source_lookup,'github_repos',return_value={'available':False,'repos':[]})]
         for p in self.patches:p.start()
     def tearDown(self):
         for p in reversed(self.patches):p.stop()
