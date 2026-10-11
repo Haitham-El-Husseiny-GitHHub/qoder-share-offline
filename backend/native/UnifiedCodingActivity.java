@@ -76,6 +76,12 @@ public final class UnifiedCodingActivity extends Activity {
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
         Button menu=button("⋯"); header.addView(menu,new LinearLayout.LayoutParams(dp(56),dp(48)));
         menu.setOnClickListener(v->menu(v)); root.addView(header);
+        LinearLayout navigation=new LinearLayout(this);
+        Button offline=button("Offline");offline.setEnabled(false);addWeighted(navigation,offline);
+        Button cloud=button("Cloud");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.mobile.MainActivity")));addWeighted(navigation,cloud);
+        Button openCode=button("OpenCode");openCode.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.OpenCodeActivity")));addWeighted(navigation,openCode);
+        root.addView(navigation);
+
         status=text("Connecting to local coder…",13); status.setPadding(dp(4),dp(6),0,dp(8)); root.addView(status);
         bridge=text("Termux bridge · checking Rish…",12);root.addView(bridge);
         bridge.setOnClickListener(v->{try{startActivity(new Intent().setClassName("moe.shizuku.privileged.api","moe.shizuku.manager.MainActivity"));}catch(Exception e){Toast.makeText(this,"Open Shizuku to start or authorize its service.",Toast.LENGTH_LONG).show();}});
@@ -143,7 +149,7 @@ public final class UnifiedCodingActivity extends Activity {
     private void chooseProject(){
         if(busy||(attachments!=null&&attachments.uploading()))return;
         EditText input=new EditText(this);input.setText(workspace);input.setSingleLine(true);
-        new AlertDialog.Builder(this).setTitle("Project folder").setMessage("Choose an existing folder under ~/projects or ~/coding-workspace.").setView(input)
+        new AlertDialog.Builder(this).setTitle("Project folder").setMessage("Enter any accessible source folder or file path. Keep Home selected to automatically find the app source from your task.").setView(input)
           .setPositiveButton("Use folder",(d,w)->{workspace=input.getText().toString().trim();getPreferences(0).edit().putString("workspace",workspace).apply();updateProject();})
           .setNeutralButton("Home",(d,w)->{workspace="/data/data/com.termux/files/home/coding-workspace";getPreferences(0).edit().putString("workspace",workspace).apply();updateProject();}).setNegativeButton("Cancel",null).show();
     }

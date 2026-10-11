@@ -190,7 +190,7 @@ class AdapterTests(unittest.TestCase):
     def setUp(self):self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)/'project';self.root.mkdir();self.ws=runner.Workspace(self.root,False)
     def tearDown(self):self.temp.cleanup()
     def test_missing_tool_is_structured(self):
-        with patch.object(tool_adapters,'command_for',return_value=None):r=tool_adapters.invoke(self.ws,'ghidra','analyze',{'path':'native.so'})
+        with patch.object(tool_adapters,'android_scope',return_value=False),patch.object(tool_adapters,'command_for',return_value=None):r=tool_adapters.invoke(self.ws,'ghidra','analyze',{'path':'native.so'})
         self.assertEqual(r['exit_code'],127);self.assertTrue(r['missing_prerequisite']);self.assertFalse(r['success'])
     def test_system_sg_is_not_ast_grep(self):
         with patch.object(tool_catalog.shutil,'which',side_effect=lambda n:'/usr/bin/sg' if n=='sg' else None),patch.object(tool_catalog.subprocess,'run',return_value=argparse.Namespace(returncode=0,stdout='usage: sg group command')):
@@ -229,7 +229,7 @@ class AdapterTests(unittest.TestCase):
         def command(argv,**kwargs):
             (self.root/argv[argv.index('--output')+1]).write_text(json.dumps({'results':[{'check_id':'test','path':'source.py'}],'errors':[]}))
             return {'exit_code':1,'output':'finding','argv':argv}
-        with patch.object(tool_adapters,'command_for',return_value=['semgrep']),patch.object(self.ws,'command',side_effect=command):
+        with patch.object(tool_adapters,'android_scope',return_value=False),patch.object(tool_adapters,'command_for',return_value=['semgrep']),patch.object(self.ws,'command',side_effect=command):
             result=tool_adapters.invoke(self.ws,'semgrep','scan',{'rules':'rules.yml'},config={})
         self.assertTrue(result['success']);self.assertEqual(result['finding_count'],1);self.assertTrue(result['artifacts'][0]['sha256'])
     def test_unsupported_operation_is_rejected(self):
@@ -250,10 +250,10 @@ class WorkerTests(unittest.TestCase):
         self.temp.cleanup()
     def edit(self):return {'tool_calls':[{'name':'edit_patch','arguments':{'path':'total.py','old_text':'return a+b+1','new_text':'return a+b','expected_sha256':fingerprint(self.project/'total.py')}}],'content':''}
     def read(self):return {'tool_calls':[{'name':'read_file','arguments':{'path':'total.py'}}],'content':''}
-    def test_real_failure_patch_test_and_original_retained(self):
+    def test_real_failure_patch_edits_original_and_retains_backup(self):
         with patch.object(runner,'complete',side_effect=[self.read(),self.edit(),{'tool_calls':[],'content':'Repaired total.'}]):state=runner.run(job(self.project))
         self.assertEqual(state['status'],'completed',state.get('error'));self.assertEqual(state['verification'],'GOAL_VERIFIED')
-        self.assertIn('a+b+1',(self.project/'total.py').read_text());self.assertIn('return a+b\n',(Path(state['workspace'])/'total.py').read_text())
+        self.assertEqual(Path(state['workspace']),self.project);self.assertIn('return a+b\n',(self.project/'total.py').read_text());self.assertIn('a+b+1',Path(state['patches'][0]['backup']).read_text())
         checks=state['verification_results']['checks'];self.assertTrue(any(c['exit_code']==1 for c in checks));self.assertTrue(any(c['exit_code']==0 and c['revision']==1 for c in checks))
         self.assertTrue(any(a['kind']=='unified_patch' for a in state['artifacts']))
     def test_model_completion_without_verification_blocked(self):

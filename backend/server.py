@@ -21,6 +21,17 @@ PHONE_HOME=Path('/data/data/com.termux/files/home')
 DEFAULT_WORKSPACE=PHONE_HOME/'coding-workspace'
 JOB={'status':'idle'}
 JOB_GUARD=threading.Lock()
+
+def resolve_source_folder(value):
+    from source_lookup import project_for_path
+    value=str(value or DEFAULT_WORKSPACE).strip()
+    if value.startswith('~/'):value=str(PHONE_HOME/value[2:])
+    path=Path(value).expanduser().resolve(strict=True)
+    if path.is_file():path=project_for_path(path)
+    if not path.is_dir():raise ValueError('Select an existing readable source folder or file.')
+    if not os.access(path,os.R_OK|os.X_OK):raise ValueError('Android denied access to this source location.')
+    return path
+
 try:
     JOB.update(json.loads((ROOT/"jobs"/"latest.json").read_text()))
     if JOB.get("status")=="running":JOB.update(status="interrupted",error="Service restarted; inspect project files before starting another task.")
@@ -201,11 +212,9 @@ class Handler(BaseHTTPRequestHandler):
             profile=data.get('profile','BUILD')
             if not objective or len(objective)>8000 or profile not in {'BUILD','FIX','VERIFY','REVIEW','AUDIT'}:raise ValueError()
             DEFAULT_WORKSPACE.mkdir(exist_ok=True)
-            workspace=Path(data.get('workspace',str(DEFAULT_WORKSPACE))).resolve(strict=True)
-            if not workspace.is_dir() or not any(workspace.is_relative_to(base) for base in (DEFAULT_WORKSPACE,PHONE_HOME/'projects')):raise ValueError()
-            if workspace==PHONE_HOME/'projects':raise ValueError()
+            workspace=resolve_source_folder(data.get('workspace'))
         except (ValueError,TypeError,AttributeError,OSError):
-            return self.answer(400,{'error':'Choose an existing project inside ~/projects or ~/coding-workspace and enter a coding objective.'})
+            return self.answer(400,{'error':'Enter a coding objective and an existing accessible source folder or file. Leave the default folder selected for automatic app-source discovery.'})
         if not RUNTIME_LOCK.acquire(blocking=False):return self.answer(409,{'error':'A local reply, coding task or model switch is already running.'})
         handed_off=False
         try:
@@ -244,8 +253,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path=='/api/session/stop':return self.answer(202,SESSIONS.stop(sid,data.get('id')))
             objective=data.get('objective','').strip();profile=data.get('profile','BUILD')
             if not objective or len(objective)>8000 or profile not in {'BUILD','FIX','VERIFY','REVIEW','AUDIT'}:raise ValueError('Enter a coding objective.')
-            workspace=Path(data.get('workspace',str(DEFAULT_WORKSPACE))).resolve(strict=True)
-            if not workspace.is_dir() or not any(workspace.is_relative_to(base) for base in (DEFAULT_WORKSPACE,PHONE_HOME/'projects')) or workspace==PHONE_HOME/'projects':raise ValueError('Choose an existing project folder.')
+            workspace=resolve_source_folder(data.get('workspace'))
             code,catalog=self.upstream('/v1/models')
             active=next((m for m in model_catalog() if any(v.get('id')==m['id'] for v in catalog.get('data',[]))),None)
             if code!=200 or not active:raise ValueError('Load a coding model first.')
@@ -255,14 +263,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.answer(202,SESSIONS.launch(sid))
         except (ValueError,TypeError,AttributeError,OSError) as exc:return self.answer(409,{'error':str(exc)})
     def do_GET(self):
-        if not self.valid(navigation=self.path in ("/","/coding","/chat")): return self.answer(403,{"error":"Local origin required"})
+        if not self.valid(navigation=self.path in ("/","/coding","/chat","/opencode")): return self.answer(403,{"error":"Local origin required"})
         parsed=urllib.parse.urlsplit(self.path)
         if parsed.path in ('/api/sessions','/api/session','/api/session/export'):
             try:
                 data=SESSIONS.listing() if parsed.path=='/api/sessions' else SESSIONS.snapshot(urllib.parse.parse_qs(parsed.query).get('session',[''])[0])
                 return self.answer(200,data)
             except ValueError as exc:return self.answer(404,{'error':str(exc)})
-        files={"/":("coding.html","text/html; charset=utf-8"),"/chat":("index.html","text/html; charset=utf-8"),"/app.js":("app.js","text/javascript; charset=utf-8"),"/coding":("coding.html","text/html; charset=utf-8"),"/coding.js":("coding.js","text/javascript; charset=utf-8")}
+        if parsed.path=='/api/opencode':
+            from opencode_bridge import get
+            try:return self.answer(200,get(urllib.parse.parse_qs(parsed.query)))
+            except Exception as exc:return self.answer(400,{'error':str(exc)[:2000]})
+        files={"/":("coding.html","text/html; charset=utf-8"),"/chat":("index.html","text/html; charset=utf-8"),"/app.js":("app.js","text/javascript; charset=utf-8"),"/coding":("coding.html","text/html; charset=utf-8"),"/coding.js":("coding.js","text/javascript; charset=utf-8"),"/opencode":("opencode.html","text/html; charset=utf-8"),"/opencode.js":("opencode.js","text/javascript; charset=utf-8")}
         if self.path in files:
             name,mime=files[self.path]
             return self.answer(200,(ROOT/name).read_bytes(),mime)
@@ -282,14 +294,21 @@ class Handler(BaseHTTPRequestHandler):
         code,body=self.upstream(paths[self.path]);self.answer(code,body)
     def do_POST(self):
         if not self.valid():return self.answer(403,{"error":"Local origin required"})
+        if self.path=='/api/opencode':
+            from opencode_bridge import post
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=30000:raise ValueError('Invalid request size.')
+                return self.answer(200,post(json.loads(self.rfile.read(length))))
+            except Exception as exc:return self.answer(400,{'error':str(exc)[:2000]})
         if urllib.parse.urlsplit(self.path).path=='/api/attachments':
             from attachment_store import store
             try:
                 query=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
                 workspace=query['workspace'][0]
-                if Path(workspace).resolve()==PHONE_HOME/'projects':raise ValueError('Choose a project, not the projects parent.')
+                workspace=str(resolve_source_folder(workspace))
                 self.connection.settimeout(120)
-                result=store(workspace,query['name'][0],self.rfile,int(self.headers.get('Content-Length','-1')),[DEFAULT_WORKSPACE,PHONE_HOME/'projects'])
+                result=store(workspace,query['name'][0],self.rfile,int(self.headers.get('Content-Length','-1')),[Path(workspace)])
                 return self.answer(201,result)
             except (OSError,ValueError,KeyError) as exc:return self.answer(400,{'error':str(exc)})
         if self.path in ('/api/sessions','/api/session/run','/api/session/stop'):return self.session_post()

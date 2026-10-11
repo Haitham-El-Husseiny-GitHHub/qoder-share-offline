@@ -36,13 +36,36 @@ def _score(path, token):
     if wanted in name:return 1
     return 0
 
+
+def project_for_path(value):
+    """Resolve a source file to its nearest project, preserving its actual location."""
+    path=Path(value).expanduser().resolve(strict=True)
+    folder=path.parent if path.is_file() else path
+    for candidate in (folder,*folder.parents):
+        if any((candidate/name).exists() for name in MARKERS) or (candidate/'.git').exists():
+            return candidate
+    return folder
+
+def explicit_source(objective):
+    # Quoted paths allow spaces. Bare paths stop at whitespace/punctuation.
+    patterns=(r"""["']((?:/|~/)[^"'\n]+)["']""",r"(?:^|\s)((?:/|~/)[^\s,;]+)")
+    for pattern in patterns:
+        for match in re.finditer(pattern,objective):
+            value=match.group(1).rstrip('.,)')
+            try:
+                path=Path(value).expanduser().resolve(strict=True)
+                if path.is_dir() or path.is_file():return project_for_path(path)
+            except (OSError,ValueError):continue
+    return None
+
 def search_roots(workspace, config):
     roots=[Path(workspace)]
     for item in (config or {}).get('source_roots') or []:
         if isinstance(item,str) and item:roots.append(Path(item).expanduser())
     home=Path.home()
-    for name in ('coding-workspace','projects','src','git','work'):
+    for name in ('projects','coding-workspace','src','git','work'):
         roots.append(home/name)
+    roots.extend([home,home/'storage'/'shared',Path('/storage/emulated/0'),Path('/sdcard')])
     seen=set();chosen=[]
     for root in roots:
         try:
@@ -53,23 +76,39 @@ def search_roots(workspace, config):
         seen.add(key);chosen.append(root)
     return chosen
 
-def find_local(token, roots, limit=2500):
-    hits=[];seen=0
+def find_local(token, roots, limit=30000):
+    hits=[];seen=set()
+    wanted=token.lower().replace('_','-')
     for root in roots:
-        if seen>=limit:break
-        for current, dirs, _files in os.walk(root, followlinks=False):
-            seen+=1
-            dirs[:]=[d for d in dirs if d not in IGNORE and not d.startswith('.')]
+        for current, dirs, files in os.walk(root, followlinks=False):
             here=Path(current)
-            try:depth=len(here.resolve().relative_to(root.resolve()).parts)
-            except (OSError,ValueError):depth=99
-            if depth>3:
-                dirs.clear();continue
-            if seen>=limit:break
-            if token and _score(here, token) and _project(here):
-                hits.append(here)
-                if len(hits)>=6:return hits
+            try:key=here.resolve()
+            except OSError:dirs.clear();continue
+            if key in seen:dirs.clear();continue
+            if len(seen)>=limit:return hits
+            seen.add(key)
+            dirs[:]=[d for d in dirs if d not in IGNORE and d not in {'.cache','.npm','.rustup','.local','Android'} and not d.startswith('.')]
+            try:depth=len(here.relative_to(root).parts)
+            except ValueError:depth=99
+            if depth>12:dirs.clear();continue
+            matches=bool(token and _score(here,token))
+            # Package/application IDs can identify source even when its folder has another name.
+            if token and not matches:
+                for marker in ('package.json','AndroidManifest.xml','build.gradle','build.gradle.kts','pyproject.toml'):
+                    if marker not in files:continue
+                    try:
+                        p=here/marker
+                        if p.stat().st_size>256000:continue
+                        body=p.read_text(errors='replace').lower()
+                        if re.search(r'(?<![a-z0-9_.-])'+re.escape(wanted)+r'(?![a-z0-9_.-])',body):
+                            matches=True;break
+                    except OSError:pass
+            if matches:
+                try:valid=_project(here)
+                except OSError:valid=False
+                if valid and here not in hits:hits.append(here)
     return hits
+
 
 def parse_packages(output, token):
     found=[]
@@ -172,6 +211,9 @@ def public(report):
     return data
 
 def acquire(objective, workspace, device=None, config=None, run=None, clone=None, http_get=None):
+    explicit=explicit_source(objective)
+    if explicit is not None:
+        return {'token':'','root':str(explicit),'chosen':{'where':'phone','path':str(explicit),'reason':'Explicit accessible source path.'},'places':[],'package':None}
     token=app_token(objective)
     preference=preferred_place(objective)
     report={'token':token,'preference':preference,'places':[],'chosen':None,'root':None,'package':None}
@@ -235,9 +277,9 @@ def acquire(objective, workspace, device=None, config=None, run=None, clone=None
                 report['chosen']={'where':'cloudflare','path':str(dest),'reason':'Cloned the GitHub repository connected to the Cloudflare project.','url':cloud_git[0]['git']}
                 report['root']=str(dest)
     if not report['root'] and report['package']:
-        report['chosen']={'where':'installed','package':report['package'],'reason':'The app is installed, but no source tree was found in the permitted locations.'}
+        report['chosen']={'where':'installed','package':report['package'],'reason':'The app is installed, but no source tree was found in accessible device locations.'}
     elif not report['root']:
-        report['chosen']={'where':'none','reason':'ambiguous source' if report.get('ambiguous') else 'No source matched in the permitted locations.'}
+        report['chosen']={'where':'none','reason':'ambiguous source' if report.get('ambiguous') else 'No source matched in accessible device locations.'}
     return report
 
 

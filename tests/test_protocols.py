@@ -89,7 +89,9 @@ class RemoteProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             env={**os.environ,'QODER_REMOTE_ROOT':t};worker=[sys.executable,str(BASE/'backend/remote_worker.py')]
             caps=subprocess.run(worker+['--capabilities'],capture_output=True,text=True,env=env,check=True)
-            self.assertIn('codeql',json.loads(caps.stdout)['tools'])
+            import tool_catalog
+            if tool_catalog.android_scope({}):self.assertNotIn('codeql',json.loads(caps.stdout)['tools'])
+            else:self.assertIn('codeql',json.loads(caps.stdout)['tools'])
             identifier='a'*32
             prepared=subprocess.run(worker+['--prepare',identifier],capture_output=True,text=True,env=env,check=True)
             path=Path(json.loads(prepared.stdout)['workspace']);self.assertEqual(path.parent,Path(t))

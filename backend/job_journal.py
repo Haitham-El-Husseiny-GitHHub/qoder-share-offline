@@ -189,6 +189,12 @@ def recovery_workspace(ws, journal, config):
         ws.root = Path(journal.data['workspace']).resolve(strict=True)
         return journal.data['recovery']
     recovery = {'mode': 'file_backups', 'target': str(ws.root)}
+    if config.get('edit_in_place'):
+        recovery.update(mode='in_place_backups',workspace=str(ws.root))
+        journal.data.update(workspace=str(ws.root),recovery=recovery)
+        journal.save()
+        return recovery
+
     if config.get('worktrees', True) and shutil.which('git'):
         top = ws.command(['git', 'rev-parse', '--show-toplevel'], timeout=10)
         head = ws.command(['git', 'rev-parse', '--verify', 'HEAD'], timeout=10)

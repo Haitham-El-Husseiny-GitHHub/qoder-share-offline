@@ -77,9 +77,13 @@ def install(args):
  if getattr(args,'defer_stamp',False):
   (target/STAMP_NAME).unlink(missing_ok=True)
  target.mkdir(mode=0o700,exist_ok=True)
- for p in (BASE/'backend').iterdir():
-  if p.is_file():shutil.copyfile(p,target/p.name)
-  elif p.is_dir() and p.name!='__pycache__':shutil.copytree(p,target/p.name,dirs_exist_ok=True)
+ # Copy only checksum-manifest application files; never import runtime keys or sessions.
+ for name in package['sha256']:
+  relative=Path(name)
+  if not relative.parts or relative.parts[0]!='backend':continue
+  source=BASE/relative;destination=target/Path(*relative.parts[1:])
+  destination.parent.mkdir(parents=True,exist_ok=True)
+  shutil.copyfile(source,destination)
  install_tools(target,getattr(args,'tools',[]),runner,PREFIX,getattr(args,'android_sdk',False))
  (target/'runtime').mkdir(mode=0o700,exist_ok=True)
  (target/'models').mkdir(mode=0o700,exist_ok=True)
@@ -108,7 +112,7 @@ def install(args):
   write_stamp(target,{'schema':1,'companion_build':incoming_build,'apk_build':package.get('apk_build'),
                       'state':'companion-installed','package_kind':package.get('kind'),
                       'installed_at':int(time.time())})
-  print('Companion build %d installed. Continue using the signed build 79 APK and its existing task box. Follow README for tool setup and Shizuku/Rish; model startup can take up to two minutes.'%incoming_build)
+  print('Companion build %d installed. Use the matching signed APK listed in the package manifest. Follow README for tool setup and Shizuku/Rish; model startup can take up to two minutes.'%incoming_build)
  else:
   print('Companion files installed; readiness stamp is deferred until offline probes pass.')
 if __name__=='__main__':

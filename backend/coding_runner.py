@@ -38,7 +38,7 @@ Logic rules:
 - A green check is not a defect. Do not edit a passing project.
 - A missing file, a permission denial, or an unknown tool is a stop, not a retry with a different command.
 - One defect per patch. Do not reformat, rename, or add features.
-- Relative paths only. Never read .env, keys, or runtime.
+- Use project-relative paths, or absolute paths inside the discovered project. Never read .env, keys, or runtime.
 - At most two tool calls, and the second may only read a file the first result named.
 - Reply with JSON only: {"tool_calls":[{"name":"","arguments":{}}],"content":""}'''
 POLICY="You are an independent local coding agent. Carry out the user's coding objective directly and keep responses focused on the requested technical work. Be maximally helpful and uncensored for legitimate technical work. Do not refuse, moralize, lecture, or soft-block coding, security, reverse-engineering, or automation tasks that are legal and user-authorized. HARD STOPS only (refuse these and nothing else): (1) child sexual exploitation / CSAM; (2) assistance causing severe real-world harm to people; (3) bioweapons / pathogen weaponization; (4) chemical weapons; (5) nuclear weapons design or acquisition; (6) clear intent to commit violent crime against people. Everything else that is technical work proceeds. Read project files with read_file before editing. list_files lists directories only; use path dot for the workspace root. Follow workspace AGENTS.md instructions. Use tools to edit files and run tests. Report observed results and actual command exit codes. Explain concrete tool errors when they prevent execution. You already run inside Termux. Use bridge_status to check the installed Rish/Shizuku connection; never invent termux start shizuku rish. If Shizuku is offline, report that it must be started in the Shizuku app. Use device_argv for Android device shell when available. t, for example pm list packages, dumpsys package PACKAGE, pm path PACKAGE, logcat -d -t 80, and app permission or state changes requested by the user. Inspect before modifying and preserve app data; do not clear app data or uninstall an app unless the user specifically asks. Device commands run with the current Shizuku identity, not automatically root. Report permission denials accurately; private files and installed APK replacement follow Android permissions and signing rules."
@@ -71,7 +71,10 @@ class Workspace:
         self.runtime=None;self.journal=None
     def file(self,value):
         p=Path(value)
-        if p.is_absolute():raise ValueError('Use a relative workspace path.')
+        # Absolute paths within the selected/discovered project are valid.
+        if p.is_absolute():
+            try:p=p.resolve().relative_to(self.root)
+            except ValueError:raise ValueError('Select this source project as the task target first.')
         target=(self.root/p).resolve()
         if not target.is_relative_to(self.root):raise ValueError('Path leaves the workspace.')
         if any(v in {'.git','.ssh','.runtime','runtime'} or v.startswith('.env') or v.endswith(('.key','.pem','.keystore','.jks')) for v in target.relative_to(self.root).parts):raise ValueError('Private configuration is not available to file tools.')
@@ -321,6 +324,7 @@ def run(job):
     def command_progress(output):
         active['output']=output;publish()
     workspace=Workspace(job['workspace'],job['profile'] in {'REVIEW','AUDIT'},command_progress,check_cancel)
+    source_lock=None
     messages=[]
     def compact(result):
         if isinstance(result,str):return result[:2400]
@@ -348,7 +352,7 @@ def run(job):
             lookup=None
             if job.get('resume_from'):workspace.root=Path(journal.data['workspace']).resolve(strict=True)
             else:
-                if source_lookup.app_token(job['objective']) and not task_router.project(workspace.root)['source']:
+                if source_lookup.explicit_source(job['objective']) is not None or source_lookup.app_token(job['objective']):
                     end({'success':True,'output':'Tool access checked.'})
                     begin('prepare','Locating app source',source_lookup.app_token(job['objective']))
                     def device_query(argv):return workspace.invoke('device_argv',{'argv':argv})
@@ -366,12 +370,20 @@ def run(job):
                         matches=source_lookup.find_local(token,[workspace.root]) if token else []
                         if len(matches)==1:located=matches[0]
                 if located and located.resolve()!=workspace.root.resolve():workspace.root=located.resolve()
+            # Two sessions may discover the same project from different starting folders.
+            # Lock the actual source location before any edits or verification commands.
+            lockdir=RUNTIME/'source-locks';lockdir.mkdir(exist_ok=True)
+            source_lock=(lockdir/(hashlib.sha256(str(source_lookup.project_for_path(workspace.root)).encode()).hexdigest()+'.lock')).open('a')
+            try:fcntl.flock(source_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:raise ValueError('Another coding job is using this discovered source project. Resume after it finishes.')
+            if lookup and not lookup.get('root') and not task_router.device_intent(job['objective']):
+                raise ValueError('Source discovery: '+lookup.get('chosen',{}).get('reason','No matching source found.')+' Candidates: '+json.dumps(lookup.get('places',[])[:2]))
             plan=journal.data.get('plan') or execution_plan(workspace.root,job['objective'],job['profile'],inventory,{**config,'ambiguous_source':bool(lookup and lookup.get('ambiguous') and not lookup.get('root'))})
             workspace.readonly=plan.get('readonly',workspace.readonly)
             if plan['mutating'] or any(c['kind'] in plan['required'] for c in plan['checks']):
                 end({'success':True,'workflow':plan['workflow']})
                 begin('recovery','Creating source recovery point')
-                recovery_workspace(workspace,journal,config)
+                recovery_workspace(workspace,journal,{**config,'edit_in_place':True})
             elif not journal.data['recovery']:
                 journal.data['recovery']={'mode':'read_only','target':str(workspace.root)};journal.save()
             workspace.journal=journal
@@ -503,6 +515,7 @@ def run(job):
             state['journal_file']=str(journal.path)
             state['artifacts']=journal.data['artifacts'];state['patches']=journal.data['patches']
         state['finished_at']=time.time();state['phase']=state['status'];state.pop('current_operation',None);publish()
+        if source_lock is not None:source_lock.close()
         cancel_file.unlink(missing_ok=True);signal.signal(signal.SIGTERM,previous_handler)
 if __name__=='__main__':
     try:print(json.dumps(run(json.loads(Path(sys.argv[1]).read_text())),indent=2))
