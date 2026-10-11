@@ -282,6 +282,16 @@ class Handler(BaseHTTPRequestHandler):
         code,body=self.upstream(paths[self.path]);self.answer(code,body)
     def do_POST(self):
         if not self.valid():return self.answer(403,{"error":"Local origin required"})
+        if urllib.parse.urlsplit(self.path).path=='/api/attachments':
+            from attachment_store import store
+            try:
+                query=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                workspace=query['workspace'][0]
+                if Path(workspace).resolve()==PHONE_HOME/'projects':raise ValueError('Choose a project, not the projects parent.')
+                self.connection.settimeout(120)
+                result=store(workspace,query['name'][0],self.rfile,int(self.headers.get('Content-Length','-1')),[DEFAULT_WORKSPACE,PHONE_HOME/'projects'])
+                return self.answer(201,result)
+            except (OSError,ValueError,KeyError) as exc:return self.answer(400,{'error':str(exc)})
         if self.path in ('/api/sessions','/api/session/run','/api/session/stop'):return self.session_post()
         if self.path == '/api/coding/stop':
             return self.stop_coding()

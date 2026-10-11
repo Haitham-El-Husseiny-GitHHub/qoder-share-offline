@@ -11,6 +11,7 @@ BASE=Path(__file__).resolve().parent
 ROOT_FILES=['WORKBENCH-DESIGN.md','README.md','ENGINEERING_TOOLS.md','VERIFICATION.md','ANDROID_TOOLS.md','install.py','install_offline_tools.py','bootstrap-termux.sh','fetch_model.py','models.json','setup-rish.sh','setup_tools.py','tools.lock.json','package_release.py','package_offline_bundle.py','INSTALLATION-BUILD-83.md']
 EXTENSIONS={'.py','.json','.md','.sh','.js','.html','.java','.yaml','.yml'}
 ROOT_FILES.append('Project/QODER-WORKER-POLICY.md')
+ROOT_FILES.append('Project/ATTACHMENTS.md')
 
 
 def sync_worker_policy():
@@ -39,7 +40,7 @@ def files():
 def manifest():
     sync_worker_policy()
     hashes={str(p.relative_to(BASE)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files()}
-    data={'build':83,'apk_build':79,'kind':'companion-update','baseline_release':'offline-79','sha256':hashes}
+    data={'build':83,'apk_build':79,'attachments_apk_build':84,'kind':'companion-update','baseline_release':'offline-79','sha256':hashes}
     (BASE/'package.json').write_text(json.dumps(data,indent=2)+'\n')
     return data
 
