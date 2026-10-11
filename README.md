@@ -15,6 +15,7 @@ Open the [Build 82 corrected release](https://github.com/haithamelhusseinycv-cyb
 - **[INSTALLATION-BUILD-82.md](INSTALLATION-BUILD-82.md)** — complete installation procedure, split-archive recovery, Shizuku/Rish setup, verification, and update instructions.
 - **Qoder-Installer-82-Technical-Guide.md** — package layout, storage, updates, and edited-APK behavior.
 - **Qoder-Share-Offline-Build-82-SHA256SUMS.txt** — checksums for the complete current package.
+- **Qoder-Android-Tools-82-README.md**, status, receipt, and verification JSON — package inventory records.
 
 Full archive SHA-256:
 
