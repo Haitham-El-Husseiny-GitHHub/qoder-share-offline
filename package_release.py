@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 
 BASE=Path(__file__).resolve().parent
-ROOT_FILES=['README.md','ENGINEERING_TOOLS.md','VERIFICATION.md','ANDROID_TOOLS.md','install.py','install_offline_tools.py','bootstrap-termux.sh','fetch_model.py','models.json','setup-rish.sh','setup_tools.py','tools.lock.json','package_release.py','package_offline_bundle.py','INSTALLATION-BUILD-83.md']
+ROOT_FILES=['WORKBENCH-DESIGN.md','README.md','ENGINEERING_TOOLS.md','VERIFICATION.md','ANDROID_TOOLS.md','install.py','install_offline_tools.py','bootstrap-termux.sh','fetch_model.py','models.json','setup-rish.sh','setup_tools.py','tools.lock.json','package_release.py','package_offline_bundle.py','INSTALLATION-BUILD-83.md']
 EXTENSIONS={'.py','.json','.md','.sh','.js','.html','.java','.yaml','.yml'}
 
 

@@ -86,7 +86,8 @@ class Runtime:
                 if kind not in self.plan['required'] and kind!='configure':continue
                 if self.ws.readonly and kind not in {'tests','security_validation'}:continue
                 # A current successful check needs no repeat.
-                if any(c['kind'] == kind and c['success'] and c['revision'] == self.journal.data['revision'] and c['argv'] == check['argv'] for c in self.journal.data['checks']):
+                prior=[c for c in self.journal.data['checks'] if c['kind']==kind and c['revision']==self.journal.data['revision'] and c['argv']==check['argv']]
+                if prior and prior[-1]['success']:
                     continue
                 if self.ws.cancel:
                     self.ws.cancel()
@@ -152,11 +153,14 @@ class Runtime:
             self.journal.check('apk_rebuild', result)
         if adapter in {'jadx', 'apktool', 'apkeditor', 'baksmali'} and operation in {'decompile', 'decode', 'disassemble', 'merge'} and okay:
             self.journal.check('inspection', result)
-        if adapter == 'apksigner' and okay:
+        signature=result.get('signature_verification',result)
+        signature_verified=bool(signature.get('success') and signature.get('certificates_sha256'))
+        if adapter == 'apksigner' and okay and operation in {'sign','verify'} and signature_verified:
             self.journal.check('apk_signature', result)
         if adapter=='apkeditor' and operation in {'rebuild','merge'} and okay:self.journal.check('apk_rebuild',result)
         if adapter=='bundletool' and operation=='install' and okay:
-            self.journal.check('apk_signature',result);self.journal.check('installation',result)
+            if signature_verified:self.journal.check('apk_signature',result)
+            self.journal.check('installation',result)
         if adapter in {'adb', 'rish'} and okay:
             kind = 'installation' if operation == 'install' else 'device_inspection'
             self.journal.check(kind, result)
@@ -188,5 +192,7 @@ class Runtime:
         return ('\nTask router plan: ' + json.dumps(compact) +
                 '\nInspect prerequisites before using an optional adapter. Prefer source. Missing native tools need a compatible installation or explicitly configured remote worker; never substitute a claim for execution. ' +
                 'Recovery workspace: ' + str(self.ws.root) + '. Use relative paths. ' +
+                'For installed-app tasks, a misspelled app label is not an executable. Use device_argv pm list packages -3, then inspect candidate packages; ask if the match is ambiguous. Use device_argv for logcat and package operations. ' +
+                'After a rejected command, read its error and select a different supported action. ' +
                 'Call verify_goal after changes. For repairs the failing test must be observed before editing and the same test must pass afterward. ' +
                 'The worker rejects completion without the required observed checks. Deliver artifact paths and remaining prerequisites accurately.')

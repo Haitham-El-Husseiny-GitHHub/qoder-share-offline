@@ -42,16 +42,23 @@ def project(root):
 
 
 def select(root, objective, profile, inventory, config):
-    detected = project(root)
     text = objective.lower()
+    # Explicit installed-app intent wins over unrelated files in the workspace.
+    source_target = bool(re.search(r'\bsource\b|\b[\w/-]+\.(?:py|js|ts|java|kt|c|cpp)\b', text))
+    device_target = not source_target and bool(re.search(
+        r'\b(installed app|app installed|logcat|shizuku|dumpsys|device crash)\b|'
+        r'\bapp\b.*\b(crash(?:es|ing)?|not opening|not launching|shuts down|closing|won.t open)\b', text))
+    detected = {'source':False,'kind':'device','manager':None,'checks':[]} if device_target else project(root)
     mutate_apk = bool(re.search(r'\b(modify|rebuild|repack|merge|sign|resign|edit|patch)\b.{0,70}\b(apk|apks|apkm|xapk|dex|smali)\b|\b(apk|smali)\b.{0,70}\b(modify|rebuild|patch|sign)\b', text))
-    if not mutate_apk and profile not in {'REVIEW','AUDIT','VERIFY'} and re.search(r'\b(readme|documentation|typo|spelling)\b',text):
+    if not mutate_apk and not device_target and not source_target and profile not in {'REVIEW','AUDIT','VERIFY'} and re.search(r'\b(readme|documentation|typo|spelling)\b',text):
         route,adapters,required='text_edit',[],['change','text_validation']
     elif mutate_apk:
         route, adapters, required = 'apk_modify', ['jadx', 'apktool', 'apkeditor', 'baksmali', 'smali', 'zipalign', 'apksigner', 'bundletool', 'adb', 'rish', 'ui'], ['apk_signature', 'installation', 'functional']
         if 'unsigned' in text:
             required = ['apk_rebuild']
         elif re.search(r'\b(modify|rebuild|repack|merge|edit|patch)\b',text):required.insert(0,'apk_rebuild')
+    elif device_target:
+        route, adapters, required = 'device', ['adb', 'rish', 'ui'], ['device_inspection', 'functional']
     elif re.search(r'\b(security|vulnerab|audit|cve|penetration)', text) or profile == 'AUDIT':
         route = 'security'
         adapters = ['semgrep', 'codeql'] if detected['source'] else ['mobsf', 'zap']
@@ -78,7 +85,7 @@ def select(root, objective, profile, inventory, config):
             adapters.append('node')
         elif detected['kind']=='native':adapters.append('cmake')
         elif re.search(r'\b(android|kotlin|java)\b',text):adapters.append('gradle')
-        adapters.append('ui')
+        if re.search(r'\b(ui|instrumentation|functional|end.to.end)\b', text):adapters.append('ui')
         if re.search(r'\b(api|http|endpoint|network)\b',text):adapters.extend(['http','mitmproxy'])
         required = (['reproduction'] if fix else []) + ['tests']
         if fix or re.search(r'\b(create|extend|add|implement|modify|refactor|update|new app)\b',text):
@@ -100,8 +107,8 @@ def select(root, objective, profile, inventory, config):
             required = ['runtime_observation']
     if not isinstance(custom, list):
         raise ValueError('verification_commands must be an array of {kind, argv} objects.')
-    checks = custom or detected['checks']
-    return {'workflow': route, 'target_kind': detected['kind'], 'source_preferred': detected['source'] and not mutate_apk,
+    checks = custom or (detected['checks'] if route in {'source_fix','source_build','inspect','security'} else [])
+    return {'workflow': route, 'target_kind': detected['kind'], 'source_preferred': detected['source'] and not mutate_apk and not device_target,
             'adapters': adapters, 'required': required, 'checks': checks, 'manager': detected['manager'],
             'prerequisites': {name: inventory['tools'][name]['missing'] for name in adapters if not inventory['tools'][name]['installed']},'custom_checks':bool(custom),
             'mutating': route in {'source_fix', 'source_build', 'apk_modify','text_edit'} and profile not in {'REVIEW', 'AUDIT'},
@@ -122,6 +129,7 @@ def evidence(journal):
     if 'reproduction' in plan['required']:
         failed = [c for c in data['checks'] if c['kind'] in {'tests','build'} and c['exit_code'] not in (None, 0) and c['revision'] < revision]
         passed = [c for c in latest.values() if c['kind'] in {'tests','build'} and c['success']]
+        failed = [f for f in failed if f.get('exit_code') not in {124, 126, 127} and not f.get('missing_prerequisite') and not f.get('timeout')]
         if any(f['argv'] == p['argv'] and all(p.get('test_inputs',{}).get(name)==sha for name,sha in f.get('test_inputs',{}).items()) for f in failed for p in passed):
             current.add('reproduction')
     missing = [kind for kind in plan['required'] if kind not in current]

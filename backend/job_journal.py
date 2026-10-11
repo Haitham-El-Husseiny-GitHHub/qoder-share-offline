@@ -152,7 +152,9 @@ class Journal:
     def check(self, kind, result, argv=None, name=None):
         entry = {'kind': kind, 'name': name or kind, 'argv': argv, 'revision': self.data['revision'],
                  'exit_code': result.get('exit_code'), 'success': bool(result.get('success', result.get('exit_code') == 0)) and not result.get('error'),
-                 'at': time.time()}
+                 'at': time.time(), 'diagnostics': result.get('diagnostics', []),
+                 'error': result.get('error'), 'output': result.get('output', '')[-6000:],
+                 'timeout': result.get('timeout', False), 'missing_prerequisite': result.get('missing_prerequisite', False)}
         if kind=='tests':entry['test_inputs']=test_inputs(self.data['workspace'])
         self.data['checks'].append(entry)
         self.save()

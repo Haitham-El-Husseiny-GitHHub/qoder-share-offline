@@ -114,6 +114,8 @@ def discover(config=None, device=True):
         if name=='gradle':available=bool(shutil.which('java') and shutil.which('javac'))
         tools[name] = {**definition, 'installed': available, 'access': 'unverified',
                        'command': cmd, 'status':'present_unverified' if available else 'missing',
+                       'availability_state':'needs_user' if available else 'unavailable',
+                       'verified_operations':[],
                        'verification_operation':{'tool':'verify_goal','inputs':{'run_checks':True}},
                        'missing': [] if available else definition['prerequisites'] or ['Executable not installed']}
     access = {'termux': bool(os.environ.get('TERMUX_VERSION') or os.environ.get('PREFIX', '').startswith('/data/data/com.termux/')),
@@ -135,6 +137,13 @@ def discover(config=None, device=True):
         else:
             access['adb'] = 'missing'
         tools['adb']['access'] = access['adb']
+        for name in ('adb','rish'):
+            if access[name]=='available':
+                tools[name]['availability_state']='verified'
+                tools[name]['verified_operations']=['connection']
+            elif tools[name]['installed']:
+                tools[name]['availability_state']='needs_user'
+                tools[name]['missing']=CATALOG[name]['prerequisites']
     sdk = Path(config.get('android_sdk') or os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or str(Path.home() / 'Android/Sdk'))
     access['android_sdk'] = str(sdk) if (sdk / 'platforms').is_dir() else 'missing'
     return {'schema': 1, 'checked_at': time.time(), 'tools': tools, 'access': access, 'adapter_groups': ADAPTER_GROUPS}

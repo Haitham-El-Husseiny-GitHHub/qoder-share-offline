@@ -134,6 +134,10 @@ class Workspace:
     def command(self,argv,env=None,timeout=120,input_data=None,output_limit=6000,track_source=True):
         if not isinstance(timeout,int) or isinstance(timeout,bool) or not 1<=timeout<=1800:raise ValueError('Command timeout must be 1..1800 seconds.')
         if self.cancel:self.cancel()
+        if self.runtime and self.runtime.config.get('offline', True):
+            from offline_policy import command as offline_command
+            offline_command(argv)
+            env={**(env or {}),'npm_config_offline':'true','CARGO_NET_OFFLINE':'true','PIP_NO_INDEX':'1','YARN_ENABLE_NETWORK':'0'}
         env={**os.environ,**(env or {})}
         if self.runtime and self.runtime.config.get('android_sdk'):
             env={**os.environ,**(env or {}),'ANDROID_HOME':self.runtime.config['android_sdk'],'ANDROID_SDK_ROOT':self.runtime.config['android_sdk']}
@@ -259,7 +263,7 @@ def run(job):
             journal=Journal(JOBS,job,job.get('resume_from'))
             if job.get('resume_from'):workspace.root=Path(journal.data['workspace']).resolve(strict=True)
             plan=journal.data.get('plan') or select(workspace.root,job['objective'],job['profile'],inventory,config)
-            if not workspace.readonly or any(c['kind'] in plan['required'] for c in plan['checks']):
+            if plan['mutating'] or any(c['kind'] in plan['required'] for c in plan['checks']):
                 end({'success':True,'workflow':plan['workflow']})
                 begin('recovery','Creating source recovery point')
                 recovery_workspace(workspace,journal,config)
@@ -285,9 +289,11 @@ def run(job):
             available=selected_tools(TOOLS,plan,workspace.readonly)
             end({'success':True,'workflow':plan['workflow'],'workspace':str(workspace.root),'recovery':journal.data['recovery']})
             if plan['workflow']=='source_fix' and not journal.data['checks']:
-                begin('diagnose','Reproducing the original failure')
+                begin('diagnose','Checking the failure baseline')
                 baseline=runtime.verify(True)
-                end({'success':True,'output':json.dumps(compact(baseline))})
+                reproduced=any(c['kind'] in {'tests','build'} and c['exit_code'] not in (None,0,124,126,127) and not c.get('missing_prerequisite') and not c.get('timeout') for c in baseline['checks'])
+                end({'success':reproduced,'output':json.dumps(compact(baseline)),
+                     **({} if reproduced else {'error':'Original failure not reproduced by the available checks.'})})
                 messages.append({'role':'user','content':'Observed baseline checks: '+json.dumps(compact(baseline))})
             finish_attempts=0
             for turn in range(plan['max_steps']):
@@ -326,6 +332,11 @@ def run(job):
                     except (ValueError,OSError,KeyError,TypeError) as exc:result={'error':redact(exc)}
                     end(result)
                     record(name,args,result)
+                    if journal.repeated_failures(name,args)>=plan['max_identical_failures']:
+                        state.update(status='blocked',verification='NOT_VERIFIED',
+                                     error='Repeated identical tool failures; stopped to preserve evidence.',
+                                     result='Stopped after repeated failures. Inspect the saved diagnostics before resuming.')
+                        return state
             raise ValueError('Coding step limit reached; evidence saved.')
     except Cancelled:
         state.update(status='stopped',result='Stopped by you. Completed file changes and operation history are retained.')

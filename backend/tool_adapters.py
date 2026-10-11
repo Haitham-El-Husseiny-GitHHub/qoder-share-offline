@@ -136,7 +136,7 @@ def manager(ws, inputs):
     return chosen
 
 
-def http_request(ws, inputs, timeout):
+def http_request(ws, inputs, timeout, offline=True):
     url = inputs['url']
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username:
@@ -153,7 +153,11 @@ def http_request(ws, inputs, timeout):
     if ws.cancel:
         ws.cancel()
     req = urllib.request.Request(url, data=body.encode() if body is not None else None, method=method, headers=headers)
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    from offline_policy import local_url, LocalRedirects
+    if offline and not local_url(url):raise ValueError('Offline HTTP requires a loopback URL.')
+    handlers=[urllib.request.ProxyHandler({})]
+    if offline:handlers.append(LocalRedirects())
+    opener = urllib.request.build_opener(*handlers)
     try:
         response = opener.open(req, timeout=timeout)
     except urllib.error.HTTPError as error:
@@ -199,7 +203,7 @@ def mobsf_call(settings, endpoint, body, content_type, timeout, cancel=None):
 
 def invoke(ws, name, operation, inputs, timeout=120, config=None, allow_remote=True):
     config = config or load_config()
-    allow_remote = allow_remote and not android_scope(config)
+    allow_remote = allow_remote and not android_scope(config) and not config.get('offline', True)
     if name not in CATALOG or operation not in CATALOG[name]['operations']:
         raise ValueError('Unknown adapter or unsupported operation.')
     if not isinstance(inputs, dict):
@@ -216,6 +220,11 @@ def invoke(ws, name, operation, inputs, timeout=120, config=None, allow_remote=T
         return invoke_remote(ws, name, operation, inputs, timeout, config)
     if ws.readonly and operation in {'rewrite', 'build', 'install', 'instrument', 'align', 'sign', 'assemble', 'compile'}:
         raise ValueError('This operation requires a writable task profile.')
+    if config.get('offline',True):
+        from offline_policy import local_url
+        target=inputs.get('url') or (config.get('mobsf',{}).get('url') if name=='mobsf' else None)
+        if target and name in {'http','mobsf','zap'} and not local_url(target):
+            raise ValueError('Offline job requires a loopback service or saved local data; remote API access needs an explicitly online job.')
     command = command_for(name, config)
     if name not in {'http', 'mobsf', 'language_server', 'node', 'gradle', 'ui'} and not command:
         return {'tool': name, 'operation': operation, 'location': 'local', 'exit_code': 127, 'success': False,
@@ -230,7 +239,7 @@ def _local(ws, name, operation, inputs, timeout, config, command):
     if name in {'http','mobsf'} and not config.get('_api_worker'):
         if ws.readonly and name=='http' and inputs.get('method','GET').upper() not in {'GET','HEAD','OPTIONS'}:raise ValueError('Read-only API inspection permits GET, HEAD and OPTIONS.')
         payload={'workspace':str(ws.root),'tool':name,'operation':operation,'inputs':inputs,'timeout':timeout,
-                 'config':{'schema':1,'mobsf':config.get('mobsf',{}),'_api_worker':True}}
+                 'config':{'schema':1,'mobsf':config.get('mobsf',{}),'offline':config.get('offline',True),'_api_worker':True}}
         executed=ws.command([sys.executable,str(BASE/'api_worker.py')],input_data=json.dumps(payload).encode(),timeout=timeout,output_limit=1_000_000)
         if executed.get('timeout'):return {**executed,'success':False,'error':'API operation timed out; its process was cancelled.'}
         try:return json.loads(executed['output'].splitlines()[-1])
@@ -238,7 +247,7 @@ def _local(ws, name, operation, inputs, timeout, config, command):
     if name == 'language_server':
         return language_tools.invoke(ws, operation, inputs, config, timeout)
     if name == 'http':
-        return http_request(ws, inputs, timeout)
+        return http_request(ws, inputs, timeout, config.get('offline',True))
     if name == 'ast_grep':
         pattern, language = inputs['pattern'], inputs['language']
         if not isinstance(pattern, str) or not pattern or len(pattern) > 4000 or not re.fullmatch(r'[A-Za-z0-9_-]+', language):
