@@ -1,5 +1,5 @@
 """Read-only, bounded health check for the phone's existing Termux/Rish bridge."""
-import shutil, subprocess, threading, time
+import os, shutil, subprocess, threading, time
 _lock = threading.Lock()
 _cached = None
 _checked = 0
@@ -9,7 +9,7 @@ def status():
         if _cached is not None and time.monotonic() - _checked < 20:
             return dict(_cached)
         rish = shutil.which('rish')
-        data = {'termux': True, 'rish_installed': bool(rish), 'rish_connected': False,
+        data = {'termux': bool(os.environ.get('TERMUX_VERSION') or os.environ.get('PREFIX','').startswith('/data/data/com.termux/')), 'rish_installed': bool(rish), 'rish_connected': False,
                 'access_level': 'offline', 'private_app_data': False, 'checked_at': time.time(), 'detail': 'Rish is not installed in Termux.'}
         if rish:
             try:

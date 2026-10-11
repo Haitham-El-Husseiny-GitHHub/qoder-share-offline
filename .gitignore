@@ -1,4 +1,9 @@
-*.apk
-*.zip
 __pycache__/
 *.pyc
+android-installer/build/
+android-installer/assets/companion.zip
+*.apk
+*.idsig
+*.keystore
+*.jks
+*.pass

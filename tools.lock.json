@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "npm": ["typescript@5.9.3", "typescript-language-server@6.0.2"],
+  "python_lsp": "python-lsp-server==1.15.0",
+  "ast_grep": "0.50.0",
+  "downloads": {
+    "apkeditor": {
+      "file": "APKEditor-1.4.9.jar",
+      "url": "https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar",
+      "size": 7733037,
+      "sha256": "a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67"
+    },
+    "bundletool": {
+      "file": "bundletool-all-1.18.3.jar",
+      "url": "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar",
+      "size": 32520401,
+      "sha256": "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
+    },
+    "smali_source": {
+      "file": "smali-3.0.6.zip",
+      "url": "https://codeload.github.com/google/smali/zip/refs/tags/3.0.6",
+      "size": 1810166,
+      "sha256": "96e02bacef3e7b7f53cd3f98ad2e497f9f7427f0dd16238fc240702a546f70ae"
+    },
+    "android_sdk": {
+      "file": "commandlinetools-linux-16111833_latest.zip",
+      "url": "https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip",
+      "size": 181052239,
+      "sha256": "0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8"
+    }
+  }
+}

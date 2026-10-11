@@ -140,7 +140,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 state=json.loads(Path(data['state_file']).read_text())
                 if state.get('id')==data.get('id'):
-                    for key in ('evidence','activity','current_operation','phase','turn','updated_at','started_at'):
+                    for key in ('evidence','activity','current_operation','phase','turn','updated_at','started_at','workflow','capabilities','required_verification','recovery','artifacts','verification_results'):
                         if key in state:data[key]=state[key]
             except (OSError,ValueError):pass
         if data.get('status')=='running':data['observed_at']=time.time()
@@ -155,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
             state.pop('messages',None)
             with JOB_GUARD:
                 JOB.update({k:v for k,v in state.items() if k!='id'})
-                JOB['status']=state['status'] if result.returncode==0 and state.get('status') in {'completed','stopped'} else 'failed'
+                JOB['status']=state['status'] if result.returncode==0 and state.get('status') in {'completed','stopped','needs_verification','blocked'} else 'failed'
                 JOB.pop('cancel_requested',None)
                 if JOB['status']=='failed':JOB['error']=state.get('error') or 'Local coding worker failed. Check the installed tool engine.'
         except Exception:
@@ -217,6 +217,9 @@ class Handler(BaseHTTPRequestHandler):
             if code!=200 or not isinstance(slots,list) or any(s.get('is_processing') for s in slots):
                 return self.answer(409,{'error':'Local model is busy or readiness cannot be verified.'})
             request={'workspace':str(workspace),'objective':objective,'profile':profile,'route':active['route']}
+            with JOB_GUARD:
+                previous=dict(JOB)
+            if previous.get('status') in {'interrupted','stopped','needs_verification'} and previous.get('objective')==objective and previous.get('target',previous.get('workspace'))==str(workspace) and (ROOT/'jobs'/(previous.get('id','')+'.journal.json')).is_file():request['resume_from']=previous['id']
             jobid=uuid.uuid4().hex
             request['id']=jobid
             jobs=ROOT/'jobs';jobs.mkdir(mode=0o700,exist_ok=True)
@@ -264,6 +267,9 @@ class Handler(BaseHTTPRequestHandler):
             name,mime=files[self.path]
             return self.answer(200,(ROOT/name).read_bytes(),mime)
         if self.path == '/api/bridge':return self.answer(200,bridge_status())
+        if self.path == '/api/tools':
+            from tool_catalog import discover,public_capabilities
+            return self.answer(200,public_capabilities(discover()))
         if self.path == '/api/status':
             code,body=self.runtime_status()
             return self.answer(code,body)

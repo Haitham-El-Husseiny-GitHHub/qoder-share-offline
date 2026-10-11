@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.qoder.share.tools" android:versionCode="84" android:versionName="84.0">
+  <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+  <queries><package android:name="com.termux" /><package android:name="com.qoder.mobile.share" /></queries>
+  <application android:label="Qoder Tools Updater" android:icon="@drawable/ic_tools" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+    <activity android:name=".MainActivity" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+    </activity>
+    <service android:name=".InstallerService" android:exported="false" android:foregroundServiceType="dataSync" />
+  </application>
+</manifest>

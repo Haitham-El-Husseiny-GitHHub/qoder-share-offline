@@ -12,7 +12,11 @@ class SessionStore:
             try:
                 s=json.loads(p.read_text());self.validate_id(s['id'])
                 if s.get('current',{}).get('status')=='running':
-                    s['current'].update(status='interrupted',error='Service restarted. Inspect project files before continuing.')
+                    try:
+                        recovered=json.loads((self.root/'jobs'/(s['current']['id']+'.json')).read_text())
+                        if recovered.get('id')==s['current']['id']:s['current'].update(recovered)
+                    except (OSError,ValueError):pass
+                    if s['current'].get('status')=='running':s['current'].update(status='interrupted',error='Service restarted. Run the same task to resume its saved workspace and verified steps.')
                     s.setdefault('jobs',[]).append(s.pop('current'));self.write(s)
                 self.sessions[s['id']]=s
             except (OSError,ValueError,KeyError):continue
@@ -83,6 +87,11 @@ class SessionStore:
                 if path==existing or path.is_relative_to(existing) or existing.is_relative_to(path):raise ValueError('Parallel jobs need separate project folders or Git worktrees.')
             if not self.active and not self.runtime_lock.acquire(blocking=False):raise ValueError('Another task or model switch is active.')
             try:
+                if not request.get('resume_from') and s.get('jobs'):
+                    previous=s['jobs'][-1]
+                    if previous.get('status') in {'interrupted','stopped','needs_verification'} and previous.get('objective')==request['objective'] and previous.get('target',previous.get('workspace'))==request['workspace']:
+                        journal=self.root/'jobs'/(previous['id']+'.journal.json')
+                        if journal.is_file():request['resume_from']=previous['id']
                 history=[]
                 for previous in s.get('jobs',[])[-2:]:
                     history.extend([{'role':'user','content':previous['objective'][:1000]},{'role':'assistant','content':str(previous.get('result') or previous.get('error') or previous['status'])[:1000]}])
@@ -106,7 +115,9 @@ class SessionStore:
             request_file.unlink(missing_ok=True)
             state.pop('history',None);state.pop('messages',None)
             with self.guard:
-                s=self.get(sid);s.pop('current',None);s.setdefault('jobs',[]).append(state);self.write(s)
+                s=self.get(sid);s.pop('current',None);s.setdefault('jobs',[]).append(state)
+                if state.get('status')=='completed' and state.get('workspace'):s['workspace']=state['workspace']
+                self.write(s)
                 self.active.pop(sid,None)
                 if not self.active:self.runtime_lock.release()
     def launch(self,sid):

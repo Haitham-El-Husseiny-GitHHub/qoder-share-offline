@@ -67,7 +67,7 @@ def invoke(ws,name,args,redact):
         staged=bool(args.get('staged',False))
         diff=ws.command(['git','diff','--no-ext-diff','--no-textconv',*(['--cached'] if staged else []),'--',path])
         return {'status':status['output'],'staged':staged,'diff':diff['output'],'exit_code':diff['exit_code'],'untracked_note':'Untracked file names appear in status; their contents are not included in Git diff.'}
-    if name=='diagnose':return diagnostics(ws.invoke('run_argv',{'argv':args['argv']}))
+    if name=='diagnose':return diagnostics(ws._invoke('run_argv',{'argv':args['argv'],'timeout':args.get('timeout',600)}))
     if name=='apk_tools':
         action=args['action'];p=ws.file(args['path'])
         if action=='info':
@@ -77,7 +77,7 @@ def invoke(ws,name,args,redact):
                 data={'path':rel(ws,p),'bytes':p.stat().st_size,'dex':[n for n in entries if re.fullmatch(r'classes\d*\.dex',n)],'native_libraries':[n for n in entries if n.startswith('lib/') and n.endswith('.so')][:60],'manifest_present':'AndroidManifest.xml' in entries,'entries':len(entries)}
             if shutil.which('aapt2'):data['badging']=ws.command(['aapt2','dump','badging',rel(ws,p)])
             return data
-        require_write(ws)
+        if action=='rebuild':require_write(ws)
         if action not in {'decode','decompile','rebuild'}:raise ValueError('Use info, decode, decompile or rebuild.')
         if action=='rebuild' and not p.is_dir():raise ValueError('Rebuild requires an Apktool decoded folder.')
         if action in {'decode','decompile'}:
@@ -89,9 +89,11 @@ def invoke(ws,name,args,redact):
         elif action=='decompile':argv=['jadx','-j','2','-d',rel(ws,out),rel(ws,p)]
         elif action=='rebuild':argv=['apktool','b',rel(ws,p),'-o',rel(ws,out)]
         else:raise ValueError('Use info, decode, decompile or rebuild.')
+        override=args.get('_command')
+        if override:argv=override+argv[1:]
         if not shutil.which(argv[0]):raise ValueError(argv[0]+' is not installed in Termux.')
         env={**os.environ,'JAVA_TOOL_OPTIONS':'-Xmx768m'}
-        result=diagnostics(ws.command(argv,env=env));result['output_path']=rel(ws,out)
+        result=diagnostics(ws.command(argv,env=env,timeout=args.get('_timeout',600)));result['output_path']=rel(ws,out)
         result['artifact_exists']=out.exists();result['installed']=False
         result['note']='Decompiled Java is for inspection; rebuild edits from the Apktool decoded resources/smali. Rebuilt APKs are unsigned and are not installed automatically.'
         return result

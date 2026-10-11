@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "execution_platform": "android",
+  "commands": {},
+  "language_servers": {
+    "typescript": ["typescript-language-server", "--stdio"],
+    "javascript": ["typescript-language-server", "--stdio"],
+    "python": ["pylsp"],
+    "c": ["clangd"],
+    "cpp": ["clangd"]
+  },
+  "signing": {},
+  "remote": {"enabled": false},
+  "mobsf": {},
+  "verification_commands": [],
+  "worktrees": true
+}
