@@ -9,12 +9,12 @@ Build 82 is an Android installer and an offline Termux tool cache. It is not a s
 You need:
 
 1. An ARM64 Android phone with at least 4 GB free in Termux storage. 6–8 GB free is recommended for the archive, extraction, and installed tools.
-2. The original signed Qoder Share APK (package `com.qoder.mobile.share`) already installed. Installer82 updates its backend; it does not replace this editor APK.
+2. The original signed Qoder Share APK (package `com.qoder.mobile.share`) already installed. Installer83 updates its backend; it does not replace this editor APK.
 3. Official ARM64 Termux from [F-Droid](https://f-droid.org/packages/com.termux/) or the [Termux GitHub releases](https://github.com/termux/termux-app/releases). Play Store Termux is not supported.
-4. [Qoder-Tools-Installer-82.apk](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Tools-Installer-82.apk).
-5. [Qoder-Android-Tools-82.zip](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Android-Tools-82.zip), size 1,706,792,466 bytes.
+4. [Qoder-Tools-Installer-83.apk](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Tools-Installer-83.apk).
+5. [Qoder-Android-Tools-82.zip](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/download/offline-82/Qoder-Android-Tools-82.zip), size 1,706,494,607 bytes.
 
-The small companion ZIP is embedded in Installer82. It is useful for inspection or recovery, but it is not installed separately during the normal flow.
+The small companion ZIP is embedded in Installer83. It is useful for inspection or recovery, but it is not installed separately during the normal flow.
 
 ## Normal installation
 
@@ -32,7 +32,7 @@ The small companion ZIP is embedded in Installer82. It is useful for inspection 
    ```
 
 4. Download the installer APK and full tools ZIP from the [Build 82 release](https://github.com/haithamelhusseinycv-cyber/qoder-share-offline/releases/tag/offline-82). Allow Android to install APKs from the browser or file manager when prompted.
-5. Install and open `Qoder-Tools-Installer-82.apk`.
+5. Install and open `Qoder-Tools-Installer-83.apk`.
 6. Grant the installer's **Termux RUN_COMMAND** permission.
 7. Leave **Install the full offline ARM64 tools bundle** enabled. Tap **Select Android tools ZIP**, choose `Qoder-Android-Tools-82.zip`, and tap **Install update**.
 8. Follow the progress in Termux. Accept the Android SDK license if Android displays it. Do not stop Termux while the archive is being verified or extracted.
@@ -41,7 +41,7 @@ The small companion ZIP is embedded in Installer82. It is useful for inspection 
 The installer verifies the archive size and SHA-256 before extraction. The expected archive SHA-256 is:
 
 ```
-2f9287b1b9222bd305d734b549121c5d1df758c793f244eaedb4716884fe0ee7
+f1d1eae62830f41f57ae3fa64c0363c785a65a6c37a01cb4ec776cfad92211c8
 ```
 
 The installed companion is under `~/qoder-selfhost`. The large ZIP remains in shared storage so it can be reused for recovery or updates.
@@ -56,7 +56,7 @@ echo 'allow-external-apps = true' >> ~/.termux/termux.properties
 termux-reload-settings
 ```
 
-Return to Installer82 and retry **Install update**.
+Return to Installer83 and retry **Install update**.
 
 ## Fresh offline Termux
 
@@ -71,7 +71,7 @@ If a fresh Termux image does not have `curl` or Python and cannot install them f
    bash bootstrap-termux.sh --android-sdk
    ```
 
-This uses the cache's local Termux repository and then installs the offline tools. Install Installer82 afterward for the Android update UI and future updates.
+This uses the cache's local Termux repository and then installs the offline tools. Install Installer83 afterward for the Android update UI and future updates.
 
 ## If the full ZIP is too large
 
@@ -83,7 +83,7 @@ Place the parts in a directory named `Qoder-Android-Tools-82-parts`, rename `Qod
 python3 Qoder-Android-Tools-82-assemble.py Qoder-Android-Tools-82-parts Qoder-Android-Tools-82.zip
 ```
 
-The assembler verifies every part and the final archive. Select the resulting ZIP in Installer82; an individual part cannot be selected.
+The assembler verifies every part and the final archive. Select the resulting ZIP in Installer83; an individual part cannot be selected.
 
 ## Shizuku and Rish
 
