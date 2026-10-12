@@ -57,6 +57,9 @@ console.log("SHARE_ACCOUNT:"+JSON.stringify(data));process.exit(0);
 def qoder(force=False):
     global CACHE
     with LOCK:
+        from qoder_credentials import read
+        if read():
+            return {'available':False,'checked_at':time.time(),'error':'Qoder PAT saved. View its subscription and usage in your Qoder account.'}
         if CACHE and not force and time.time()-CACHE['checked_at'] < 60:
             return dict(CACHE)
         try:

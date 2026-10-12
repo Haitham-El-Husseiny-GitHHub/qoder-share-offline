@@ -268,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path=='/api/localhost':
             from restart_localhost import status
             return self.answer(200,status())
+        if parsed.path=='/api/account/qoder/key':
+            from qoder_credentials import status
+            return self.answer(200,status())
         if parsed.path in ('/api/account/qoder','/api/account/go'):
             import account_status
             try:
@@ -311,7 +314,22 @@ class Handler(BaseHTTPRequestHandler):
         code,body=self.upstream(paths[self.path]);self.answer(code,body)
     def do_POST(self):
         if not self.valid():return self.answer(403,{"error":"Local origin required"})
+        if self.path=='/api/account/qoder/key':
+            import qoder_credentials,account_status,restart_localhost
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=12000:raise ValueError('Invalid request size.')
+                data=json.loads(self.rfile.read(length))
+                result=qoder_credentials.remove() if data.get('remove') is True else qoder_credentials.save(data.get('key'))
+                account_status.CACHE=None
+                def reconnect():
+                    try:restart_localhost.restart()
+                    except Exception:pass
+                threading.Thread(target=reconnect,daemon=True).start()
+                return self.answer(200,result)
+            except (OSError,ValueError) as exc:return self.answer(400,{'error':'Could not save Qoder key. '+str(exc) if isinstance(exc,ValueError) else 'Could not save Qoder key.'})
         if self.path.startswith('/api/qoder-cloud/'):
+
             import qoder_cloud
             try:
                 length=int(self.headers.get('Content-Length','0'))

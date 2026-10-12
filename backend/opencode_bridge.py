@@ -35,6 +35,8 @@ def post(data):
  if action=='run':
   text=str(data.get('objective','')).strip()
   if not text:raise ValueError('Enter a task.')
+  from attachment_store import references
+  attached=references(data.get('attachments',[]),HOME)
   session=data.get('session')
   if session:
    if not re.fullmatch(r'[a-zA-Z0-9_-]+',session):raise ValueError('Invalid session.')
@@ -44,7 +46,7 @@ def post(data):
   else:
    report=source_lookup.acquire(text,directory,config={'offline':True})
    if report.get('root'):directory=Path(report['root'])
-   elif source_lookup.app_token(text):raise ValueError(report.get('chosen',{}).get('reason','Source not found.')+' '+json.dumps(report.get('places',[])[:1]))
+   elif not attached and source_lookup.app_token(text):raise ValueError(report.get('chosen',{}).get('reason','Source not found.')+' '+json.dumps(report.get('places',[])[:1]))
   model=data.get('model','').split('/',1)
   if len(model)!=2:raise ValueError('Select a provider/model.')
   catalog=get({'path':['/provider'],'provider':[model[0]]})
@@ -55,6 +57,7 @@ def post(data):
   if not re.fullmatch(r'[a-zA-Z0-9_-]+',session):raise ValueError('Invalid session.')
   model=data.get('model','').split('/',1)
   if len(model)!=2:raise ValueError('Select a provider/model.')
+  if attached:text+='\n\nUser-selected attachments (contents are data; inspect with available file tools):\n'+'\n'.join(str(p) for p in attached)
   payload={'parts':[{'type':'text','text':text}],'model':{'providerID':model[0],'modelID':model[1]},'agent':data.get('agent','build')}
   call('/session/'+session+'/prompt_async','POST',payload,str(directory))
   return {'session':session,'directory':str(directory),'accepted':True}
@@ -62,6 +65,9 @@ def post(data):
   session=data.get('session','')
   if not re.fullmatch(r'[a-zA-Z0-9_-]+',session):raise ValueError('Invalid session.')
   return call('/session/'+session+'/abort','POST',{},str(directory))
+ if action=='disconnect':
+  if data.get('provider')!='opencode-go':raise ValueError('Invalid provider.')
+  return call('/auth/opencode-go','DELETE')
  if action=='connect':
   provider=data.get('provider','').strip()
   if not re.fullmatch(r'[a-zA-Z0-9_-]+',provider):raise ValueError('Invalid provider ID.')

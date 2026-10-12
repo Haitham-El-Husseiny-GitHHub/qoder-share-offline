@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 BASE=Path(__file__).resolve().parent
-ROOT_FILES=['WORKBENCH-DESIGN.md','README.md','ENGINEERING_TOOLS.md','VERIFICATION.md','ANDROID_TOOLS.md','install.py','install_offline_tools.py','bootstrap-termux.sh','fetch_model.py','models.json','setup-rish.sh','setup_tools.py','tools.lock.json','package_release.py','package_offline_bundle.py','INSTALLATION-BUILD-83.md','INSTALLATION-BUILD-85.md','INSTALLATION-BUILD-86.md','INSTALLATION-BUILD-87.md','INSTALLATION-BUILD-88.md','INSTALLATION-BUILD-89.md','INSTALLATION-BUILD-90.md','INSTALLATION-BUILD-91.md','INSTALLATION-BUILD-92.md','setup_opencode.py']
+ROOT_FILES=['WORKBENCH-DESIGN.md','README.md','ENGINEERING_TOOLS.md','VERIFICATION.md','ANDROID_TOOLS.md','install.py','install_offline_tools.py','bootstrap-termux.sh','fetch_model.py','models.json','setup-rish.sh','setup_tools.py','tools.lock.json','package_release.py','package_offline_bundle.py','INSTALLATION-BUILD-83.md','INSTALLATION-BUILD-85.md','INSTALLATION-BUILD-86.md','INSTALLATION-BUILD-87.md','INSTALLATION-BUILD-88.md','INSTALLATION-BUILD-89.md','INSTALLATION-BUILD-90.md','INSTALLATION-BUILD-91.md','INSTALLATION-BUILD-92.md','INSTALLATION-BUILD-93.md','setup_opencode.py']
 EXTENSIONS={'.py','.json','.md','.sh','.js','.html','.java','.yaml','.yml','.cjs'}
 ROOT_FILES.append('Project/QODER-WORKER-POLICY.md')
 ROOT_FILES.append('Project/ATTACHMENTS.md')
@@ -41,7 +41,7 @@ def files():
 def manifest():
     sync_worker_policy()
     hashes={str(p.relative_to(BASE)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files()}
-    data={'build':92,'apk_build':92,'attachments_apk_build':92,'opencode_version':'1.19.0','kind':'companion-update','baseline_release':'offline-79','sha256':hashes}
+    data={'build':93,'apk_build':93,'attachments_apk_build':93,'opencode_version':'1.19.0','kind':'companion-update','baseline_release':'offline-79','sha256':hashes}
     (BASE/'package.json').write_text(json.dumps(data,indent=2)+'\n')
     return data
 
@@ -53,6 +53,6 @@ if __name__=='__main__':
         output=Path(args.output);output.parent.mkdir(parents=True,exist_ok=True)
         if output.exists():raise SystemExit('Output already exists; choose a new package filename.')
         with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as z:
-            for p in files()+[BASE/'package.json']:z.write(p,'Qoder-Share-Tools-92/'+str(p.relative_to(BASE)))
+            for p in files()+[BASE/'package.json']:z.write(p,'Qoder-Share-Tools-93/'+str(p.relative_to(BASE)))
         print(json.dumps({'file':str(output),'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),'bytes':output.stat().st_size,'files':len(data['sha256'])},indent=2))
     else:print('Updated package.json:',len(data['sha256']),'files')

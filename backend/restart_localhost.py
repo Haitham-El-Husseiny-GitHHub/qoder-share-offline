@@ -31,6 +31,8 @@ def status():
 def restart():
     STATE.mkdir(parents=True,exist_ok=True)
     env={**os.environ,'PREFIX':str(PREFIX),'PATH':str(PREFIX/'bin')+':/system/bin','TMPDIR':str(PREFIX/'tmp'),'TERMUX_VERSION':os.environ.get('TERMUX_VERSION','remote-session')}
+    from qoder_credentials import environment
+    env=environment(env)
     started=time.time()
     def save(phase,**extra):
         p=STATE/'restart-status.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps({'phase':phase,'requested_at':started,'checked_at':time.time(),**extra}));tmp.chmod(0o600);tmp.replace(p)

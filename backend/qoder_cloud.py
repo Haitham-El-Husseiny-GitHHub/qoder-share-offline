@@ -6,7 +6,8 @@ HOME=Path('/data/data/com.termux/files/home');ROOT=Path(__file__).resolve().pare
 FOLDER=ROOT/'runtime/cloud-jobs';GUARD=threading.Lock();ACTIVE={}
 PUBLISHED=['Auto','Ultimate','Performance','Efficient','Sonus','Cantus','Qwen3.8-Max','Qwen3.8-Flash','Qwen3.7-Max','Qwen3.7-Plus','DeepSeek-V4-Pro','DeepSeek-V4-Flash','GLM-5.3','GLM-5.3-Flash','GLM-5.2','Kimi-K3','Kimi-K2.8-Preview','Kimi-K2.7-Code','MiniMax-M3']
 def env():
- return {**os.environ,'PREFIX':'/data/data/com.termux/files/usr','TMPDIR':'/data/data/com.termux/files/usr/tmp','TERMUX_VERSION':os.environ.get('TERMUX_VERSION','remote-session')}
+ from qoder_credentials import environment
+ return environment({**os.environ,'PREFIX':'/data/data/com.termux/files/usr','TMPDIR':'/data/data/com.termux/files/usr/tmp','TERMUX_VERSION':os.environ.get('TERMUX_VERSION','remote-session')})
 def catalog(force=False):
  cache=ROOT/'runtime/qoder-published-models.json'
  try:

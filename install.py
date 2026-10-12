@@ -107,6 +107,9 @@ def install(args):
  (monitor/'run').write_text('#!'+str(PREFIX/'bin/sh')+'\nexport PREFIX='+str(PREFIX)+'\nexport PATH='+str(PREFIX/'bin')+':/system/bin\nexport TMPDIR='+str(PREFIX/'tmp')+'\nexec '+str(PREFIX/'bin/python3')+' '+str(target/'bridge_watchdog.py')+'\n');os.chmod(monitor/'run',0o700)
  (target/'runtime/bridge-defaults.json').write_text(json.dumps({'automatic_start':True,'automatic_reconnect':True,'screens':['offline','qoder-cloud','opencode'],'services':['qoder-selfhost','opencode','qoder-bridge'],'shizuku_recovery':'authorized_loopback_adb','app_retry_seconds':15,'rish_check_seconds':20})+'\n')
  os.chmod(target/'bridge-start.sh',0o700)
+ boot_remote=HOME/'.termux/boot/07-qoder-remote'
+ if boot_remote.exists():
+  shutil.copyfile(target/'qoder-remote-boot.sh',boot_remote);os.chmod(boot_remote,0o700)
  boot=HOME/'.termux/boot/08-qoder-selfhost';boot.parent.mkdir(parents=True,exist_ok=True);boot.write_text('#!'+str(PREFIX/'bin/sh')+'\nexec '+str(target/'bridge-start.sh')+'\n');os.chmod(boot,0o700)
  (HOME/'bin').mkdir(exist_ok=True);cli=HOME/'bin/qoder-local-code';cli.write_text('#!'+str(PREFIX/'bin/sh')+'\nexec '+str(PREFIX/'bin/python3')+' '+str(target/'local_cli.py')+' "$@"\n');os.chmod(cli,0o700)
  if update_lock:update_lock.close()

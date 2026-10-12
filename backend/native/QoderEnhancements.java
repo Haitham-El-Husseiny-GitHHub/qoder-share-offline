@@ -43,7 +43,7 @@ public final class QoderEnhancements {
    ViewGroup content=(ViewGroup)a.findViewById(android.R.id.content);
    for(int i=0;i<content.getChildCount();i++){View v=content.getChildAt(i);ViewGroup.LayoutParams lp=v.getLayoutParams();if(lp instanceof FrameLayout.LayoutParams){FrameLayout.LayoutParams f=(FrameLayout.LayoutParams)lp;f.topMargin+=height;v.setLayoutParams(f);}}
    ((ViewGroup)a.getWindow().getDecorView()).addView(strip,p);
-   strip.setOnClickListener(v->showAccount(a));
+   strip.setContentDescription("Qoder credits, API key and attachments");strip.setOnClickListener(v->showAccount(a));
   }
   render(strip);
   if(updating||System.currentTimeMillis()-checked<15000)return;
@@ -63,7 +63,7 @@ public final class QoderEnhancements {
   if(data!=null&&data.optBoolean("available")){JSONArray parts=data.optJSONArray("parts");if(parts!=null)for(int i=0;i<parts.length();i++){JSONObject p=parts.optJSONObject(i);text.append(p.optString("label")).append(": ").append(format(p.optDouble("remaining"))).append(" Credits remaining\n");}
    text.append("\nUpdated ").append(new java.text.SimpleDateFormat("HH:mm:ss",Locale.getDefault()).format(new Date((long)(data.optDouble("checked_at")*1000))));
   }else text.append("Account credit data could not be refreshed.");
-  new AlertDialog.Builder(a).setTitle("Qoder credits").setMessage(text).setPositiveButton("Refresh",(d,w)->{checked=0;attach(a);}).setNegativeButton("Close",null).show();
+  new AlertDialog.Builder(a).setTitle("Qoder credits").setMessage(text).setPositiveButton("Refresh",(d,w)->{checked=0;attach(a);}).setNegativeButton("API key",(d,w)->QoderCredentials.show(a)).setNeutralButton("Attach files",(d,w)->QoderAttachments.show(a)).show();
  }
  private static String format(double n){return java.math.BigDecimal.valueOf(n).stripTrailingZeros().toPlainString();}
  private static Field field(Object o,String name)throws Exception{Field f=o.getClass().getDeclaredField(name);f.setAccessible(true);return f;}
