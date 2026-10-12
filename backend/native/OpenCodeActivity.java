@@ -19,7 +19,7 @@ public final class OpenCodeActivity extends Activity {
    root.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom));return insets;
   });
   LinearLayout tabs=new LinearLayout(this);
-  String[] labels={"Offline","Cloud","OpenCode"};
+  String[] labels={"Offline","Qoder","OpenCode"};
   String[] activities={"com.qoder.share.UnifiedCodingActivity","com.qoder.share.CloudCatalogActivity",""};
   for(int i=0;i<3;i++){final String target=activities[i];Button b=new Button(this);b.setText(labels[i]);b.setAllCaps(false);b.setTextColor(Color.rgb(31,54,39));b.setEnabled(i!=2);tabs.addView(b,new LinearLayout.LayoutParams(0,-2,1));b.setOnClickListener(v->{startActivity(new Intent().setClassName(this,target));finish();});}
   root.addView(tabs);

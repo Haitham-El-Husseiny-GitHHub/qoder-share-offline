@@ -78,7 +78,7 @@ public final class UnifiedCodingActivity extends Activity {
         menu.setOnClickListener(v->menu(v)); root.addView(header);
         LinearLayout navigation=new LinearLayout(this);
         Button offline=button("Offline");offline.setEnabled(false);addWeighted(navigation,offline);
-        Button cloud=button("Cloud");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.CloudCatalogActivity")));addWeighted(navigation,cloud);
+        Button cloud=button("Qoder");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.CloudCatalogActivity")));addWeighted(navigation,cloud);
         Button openCode=button("OpenCode");openCode.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.OpenCodeActivity")));addWeighted(navigation,openCode);
         root.addView(navigation);
 

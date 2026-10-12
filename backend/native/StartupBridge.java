@@ -28,12 +28,29 @@ public final class StartupBridge {
    context.startService(intent);lastStart=now;
   }catch(Exception ignored){lastStart=0;}
  }
+ private static void attachCloudNavigation(Activity activity){
+  if(!activity.getClass().getName().equals("com.qoder.mobile.MainActivity"))return;
+  android.view.View bar=activity.findViewById(0x51a71003);
+  if(!(bar instanceof android.widget.LinearLayout))return;
+  android.widget.LinearLayout row=(android.widget.LinearLayout)bar;
+  android.view.View offline=activity.findViewById(0x51a71002);
+  if(offline instanceof android.widget.Button)((android.widget.Button)offline).setText("Offline");
+  if(activity.findViewById(0x51a71004)!=null)return;
+  android.widget.Button button=new android.widget.Button(activity);
+  button.setId(0x51a71004);button.setText("OpenCode");button.setAllCaps(false);
+  button.setTextSize(13);button.setMinWidth(0);button.setMinimumWidth(0);
+  button.setTextColor(0xff2a372f);button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffefeff0));
+  android.widget.LinearLayout.LayoutParams params=new android.widget.LinearLayout.LayoutParams(0,-1,1);
+  params.leftMargin=4;params.rightMargin=4;
+  button.setOnClickListener(v->activity.startActivity(new Intent().setClassName(activity,"com.qoder.share.OpenCodeActivity")));
+  row.addView(button,params);
+ }
  public static synchronized void install(Application app){
   if(installed)return;installed=true;
   app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks(){
    public void onActivityCreated(Activity a,Bundle state){}
    public void onActivityStarted(Activity a){}
-   public void onActivityResumed(Activity a){visible=new WeakReference<>(a);main.postDelayed(()->ensure(a),350);}
+   public void onActivityResumed(Activity a){visible=new WeakReference<>(a);main.postDelayed(()->{ensure(a);attachCloudNavigation(a);},350);main.postDelayed(()->attachCloudNavigation(a),1000);}
    public void onActivityPaused(Activity a){if(visible.get()==a)visible.clear();}
    public void onActivityStopped(Activity a){}
    public void onActivitySaveInstanceState(Activity a,Bundle state){}

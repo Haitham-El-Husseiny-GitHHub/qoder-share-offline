@@ -19,7 +19,7 @@ public final class CloudCatalogActivity extends Activity {
    root.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom));return insets;
   });
   LinearLayout tabs=new LinearLayout(this);
-  String[] labels={"Offline","Cloud","OpenCode","Sessions"};
+  String[] labels={"Offline","Qoder","OpenCode","Sessions"};
   String[] activities={"com.qoder.share.UnifiedCodingActivity","","com.qoder.share.OpenCodeActivity","com.qoder.mobile.MainActivity"};
   for(int i=0;i<4;i++){final String target=activities[i];Button b=new Button(this);b.setText(labels[i]);b.setAllCaps(false);b.setTextColor(Color.rgb(31,54,39));b.setEnabled(i!=1);tabs.addView(b,new LinearLayout.LayoutParams(0,-2,1));b.setOnClickListener(v->{startActivity(new Intent().setClassName(this,target));finish();});}
   root.addView(tabs);
