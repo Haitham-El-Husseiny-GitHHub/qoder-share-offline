@@ -263,8 +263,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.answer(202,SESSIONS.launch(sid))
         except (ValueError,TypeError,AttributeError,OSError) as exc:return self.answer(409,{'error':str(exc)})
     def do_GET(self):
-        if not self.valid(navigation=self.path in ("/","/coding","/chat","/opencode","/cloud")): return self.answer(403,{"error":"Local origin required"})
+        if not self.valid(navigation=self.path in ("/","/coding","/chat","/opencode")): return self.answer(403,{"error":"Local origin required"})
         parsed=urllib.parse.urlsplit(self.path)
+        if parsed.path in ('/api/account/qoder','/api/account/go'):
+            import account_status
+            try:
+                data=account_status.qoder(urllib.parse.parse_qs(parsed.query).get('refresh',[''])[0]=='1') if parsed.path.endswith('/qoder') else account_status.go()
+                return self.answer(200,data)
+            except Exception:return self.answer(503,{'available':False,'error':'Account status unavailable.'})
         if parsed.path in ('/api/sessions','/api/session','/api/session/export'):
             try:
                 data=SESSIONS.listing() if parsed.path=='/api/sessions' else SESSIONS.snapshot(urllib.parse.parse_qs(parsed.query).get('session',[''])[0])
@@ -282,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
             from opencode_bridge import get
             try:return self.answer(200,get(urllib.parse.parse_qs(parsed.query)))
             except Exception as exc:return self.answer(400,{'error':str(exc)[:2000]})
-        files={"/":("coding.html","text/html; charset=utf-8"),"/chat":("index.html","text/html; charset=utf-8"),"/app.js":("app.js","text/javascript; charset=utf-8"),"/coding":("coding.html","text/html; charset=utf-8"),"/coding.js":("coding.js","text/javascript; charset=utf-8"),"/opencode":("opencode.html","text/html; charset=utf-8"),"/opencode.js":("opencode.js","text/javascript; charset=utf-8"),"/cloud":("cloud.html","text/html; charset=utf-8"),"/cloud.js":("cloud.js","text/javascript; charset=utf-8")}
+        files={"/":("coding.html","text/html; charset=utf-8"),"/chat":("index.html","text/html; charset=utf-8"),"/app.js":("app.js","text/javascript; charset=utf-8"),"/coding":("coding.html","text/html; charset=utf-8"),"/coding.js":("coding.js","text/javascript; charset=utf-8"),"/opencode":("opencode.html","text/html; charset=utf-8"),"/opencode.js":("opencode.js","text/javascript; charset=utf-8")}
         if self.path in files:
             name,mime=files[self.path]
             return self.answer(200,(ROOT/name).read_bytes(),mime)

@@ -5,7 +5,7 @@ import os, re, subprocess, zipfile
 HOME = Path('/data/data/com.termux/files/home')
 SOURCE = Path(__file__).resolve().parent
 ROOT = HOME / 'qoder-native-share/decoded-selfhost'
-BUILD = HOME / 'qoder-native-share/unified-88'
+BUILD = HOME / 'qoder-native-share/unified-90'
 SDK = HOME / 'android-sdk'
 JAR = SDK / 'platforms/android-36/android.jar'
 BUILD.mkdir(exist_ok=True)
@@ -37,6 +37,18 @@ if 'moe.shizuku.privileged.api' not in s:s=s.replace('</queries>','<package andr
 if 'com.qoder.share.OpenCodeActivity' not in s:s=s.replace('</application>','<activity android:name="com.qoder.share.OpenCodeActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/></application>')
 if 'com.qoder.share.CloudCatalogActivity' not in s:s=s.replace('</application>','<activity android:name="com.qoder.share.CloudCatalogActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/></application>')
 manifest.write_text(s)
+# Extend the original session model lists, preserving model IDs and permissions.
+for relative, methods in [('smali/U7/l.smali', ['.method public static l(Ljava/util/List;)Ljava/util/ArrayList;']),
+                          ('smali/M7/O.smali', ['.method public final j()Ljava/util/List;', '.method public final k()Ljava/util/List;'])]:
+    path=ROOT/relative
+    body=path.read_text()
+    for signature in methods:
+        start=body.index(signature);end=body.index('.end method',start)
+        section=body[start:end]
+        if 'Lcom/qoder/share/QoderEnhancements;->augment' not in section:
+            section=re.sub(r'    return-object (v\d+)',lambda m:'    invoke-static {'+m[1]+'}, Lcom/qoder/share/QoderEnhancements;->augment(Ljava/util/List;)Ljava/util/ArrayList;\n    move-result-object '+m[1]+'\n\n'+m[0],section)
+            body=body[:start]+section+body[end:]
+    path.write_text(body)
 # The local button in the optional cloud screen must return to this native
 # workspace rather than opening a browser or Custom Tab.
 p=ROOT/'smali/com/qoder/share/SelfHostedChat.smali'
@@ -53,7 +65,7 @@ s=s[:start]+'''.method public onClick(Landroid/view/View;)V
 .end method'''+s[end:]
 p.write_text(s)
 p=ROOT/'apktool.yml'
-s=p.read_text();s=re.sub(r'versionCode: .*','versionCode: 88',s);s=re.sub(r'versionName: .*','versionName: 0.3.10-navigation',s);p.write_text(s)
+s=p.read_text();s=re.sub(r'versionCode: .*','versionCode: 90',s);s=re.sub(r'versionName: .*','versionName: 0.3.12-sessions',s);p.write_text(s)
 run(['javac','-source','8','-target','8','-classpath',JAR,'-d',BUILD/'classes',*sorted((SOURCE/'native').glob('*.java'))])
 classes=list((BUILD/'classes').rglob('*.class'))
 run(['java','-cp',SDK/'build-tools/36.0.0/lib/d8.jar','com.android.tools.r8.D8','--lib',JAR,'--min-api','30','--output',BUILD/'dex',*classes])
@@ -63,7 +75,7 @@ with zipfile.ZipFile(BUILD/'base.apk') as original,zipfile.ZipFile(BUILD/'unsign
         if info.filename!='classes4.dex':out.writestr(info,original.read(info.filename))
     out.write(BUILD/'dex/classes.dex','classes4.dex',compress_type=zipfile.ZIP_STORED)
 run(['zipalign','-f','-p','4',BUILD/'unsigned.apk',BUILD/'aligned.apk'])
-apk=Path('/sdcard/Download/Qoder-Share-Navigation-88.apk')
+apk=Path('/sdcard/Download/Qoder-Share-Sessions-90.apk')
 run(['apksigner','sign','--ks',HOME/'qoder-native-share/share.keystore','--ks-key-alias','qoder-share','--ks-pass','file:'+str(HOME/'qoder-native-share/signing.pass'),'--out',apk,BUILD/'aligned.apk'])
 run(['apksigner','verify','--print-certs',apk])
 print('BUILT '+str(apk),flush=True)

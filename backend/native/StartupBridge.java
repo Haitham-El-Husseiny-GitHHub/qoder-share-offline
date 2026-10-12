@@ -35,7 +35,7 @@ public final class StartupBridge {
   android.widget.LinearLayout row=(android.widget.LinearLayout)bar;
   android.view.View offline=activity.findViewById(0x51a71002);
   if(offline instanceof android.widget.Button)((android.widget.Button)offline).setText("Offline");
-  if(activity.findViewById(0x51a71004)!=null)return;
+  if(activity.findViewById(0x51a71004)!=null){QoderEnhancements.attach(activity);return;}
   android.widget.Button button=new android.widget.Button(activity);
   button.setId(0x51a71004);button.setText("OpenCode");button.setAllCaps(false);
   button.setTextSize(13);button.setMinWidth(0);button.setMinimumWidth(0);
@@ -44,6 +44,7 @@ public final class StartupBridge {
   params.leftMargin=4;params.rightMargin=4;
   button.setOnClickListener(v->activity.startActivity(new Intent().setClassName(activity,"com.qoder.share.OpenCodeActivity")));
   row.addView(button,params);
+  QoderEnhancements.attach(activity);
  }
  public static synchronized void install(Application app){
   if(installed)return;installed=true;
@@ -56,6 +57,6 @@ public final class StartupBridge {
    public void onActivitySaveInstanceState(Activity a,Bundle state){}
    public void onActivityDestroyed(Activity a){if(visible.get()==a)visible.clear();}
   });
-  main.post(new Runnable(){public void run(){Activity a=visible.get();if(a!=null)ensure(a);main.postDelayed(this,15000);}});
+  main.post(new Runnable(){public void run(){Activity a=visible.get();if(a!=null){ensure(a);attachCloudNavigation(a);}main.postDelayed(this,15000);}});
  }
 }

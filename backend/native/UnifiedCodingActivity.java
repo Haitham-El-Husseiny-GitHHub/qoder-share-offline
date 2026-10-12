@@ -50,7 +50,7 @@ public final class UnifiedCodingActivity extends Activity {
     private Button button(String label) {
         Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextSize(14);
         b.setTextColor(Color.rgb(31, 54, 39)); b.setMinHeight(dp(48));
-        b.setBackgroundTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_selected},new int[]{}},new int[]{0xffd3e7ce,0xffedf0ed}));
+        b.setBackgroundTintList(ColorStateList.valueOf(0xffefeff0));
         return b;
     }
     private void addWeighted(LinearLayout row, View v) {
@@ -78,8 +78,8 @@ public final class UnifiedCodingActivity extends Activity {
         menu.setOnClickListener(v->menu(v)); root.addView(header);
         LinearLayout navigation=new LinearLayout(this);
         Button offline=button("Offline");offline.setEnabled(false);addWeighted(navigation,offline);
-        Button cloud=button("Qoder");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.CloudCatalogActivity")));addWeighted(navigation,cloud);
-        Button openCode=button("OpenCode");openCode.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.OpenCodeActivity")));addWeighted(navigation,openCode);
+        Button cloud=button("Qoder");cloud.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.mobile.MainActivity")));addWeighted(navigation,cloud);
+        Button openCode=button("OpenCode");openCode.setSingleLine(true);openCode.setTextSize(13);openCode.setOnClickListener(v->startActivity(new Intent().setClassName(this,"com.qoder.share.OpenCodeActivity")));addWeighted(navigation,openCode);
         root.addView(navigation);
 
         status=text("Connecting to local coder…",13); status.setPadding(dp(4),dp(6),0,dp(8)); root.addView(status);
@@ -136,7 +136,7 @@ public final class UnifiedCodingActivity extends Activity {
         workspace=getPreferences(0).getString(sessionId()+"workspace","/data/data/com.termux/files/home/coding-workspace");
         profile="BUILD";if(taskMode!=null)taskMode.setText(profile);
         objective.setText(getPreferences(0).getString(sessionId()+"draft",""));updateProject();
-        for(int i=0;i<2;i++)tabButtons[i].setSelected(i==selectedTab);
+        for(int i=0;i<2;i++){tabButtons[i].setSelected(i==selectedTab);tabButtons[i].setTypeface(null,i==selectedTab?Typeface.BOLD:Typeface.NORMAL);}
     }
     private void selectTab(int index){if(attachments!=null&&attachments.uploading())return;rememberDraft();selectedTab=index;busy=false;stopping=false;rendered="";renderedId="";feed.removeAllViews();restoreDraft();controls();refresh();}
     private void updateProject(){project.setText("⌂ "+(workspace.equals("/data/data/com.termux/files/home/coding-workspace")?"Home":workspace.replace("/data/data/com.termux/files/home/","~/")));}
@@ -157,7 +157,7 @@ public final class UnifiedCodingActivity extends Activity {
             else if(s.equals("Clear current chat"))manageSession("clear");
             else if(s.equals("Delete session"))new AlertDialog.Builder(this).setTitle("Delete session?").setMessage("Delete this session's messages and operation logs. Project files are retained.").setPositiveButton("Delete",(d,w)->manageSession("delete")).setNegativeButton("Cancel",null).show();
             else if(s.equals("Export session"))exportSession();
-            else startActivity(new Intent().setClassName(this,"com.qoder.share.CloudCatalogActivity"));return true;});p.show();
+            else startActivity(new Intent().setClassName(this,"com.qoder.mobile.MainActivity"));return true;});p.show();
     }
     private void modelInfo(){
         if(runningCount>0)return;
@@ -215,7 +215,7 @@ public final class UnifiedCodingActivity extends Activity {
             JSONObject connection=api("/api/bridge",null);
             JSONObject s=api("/api/status",null),session=api("/api/session?session="+sid,null);
             ui.post(()->{refreshing=false;if(destroyed||!sid.equals(sessionId()))return;
-                bridge.setText("Termux connected · "+(connection.optBoolean("rish_connected")?"Rish connected · "+connection.optString("access_level","shell")+" access":"Rish offline — tap to open Shizuku"));bridge.setTextColor(connection.optBoolean("rish_connected")?0xff3e774a:0xffa36624);
+                bridge.setText("Termux connected · "+(connection.optBoolean("rish_connected")?"Rish connected · "+connection.optString("access_level","shell")+" access":"Rish offline — tap to open Shizuku"));bridge.setTextColor(connection.optBoolean("rish_connected")?0xff3e774a:0xffa83232);
                 ready=s.optBoolean("coding_ready");model.setText(s.optString("model_name","Choose model")+" · 0.0x ▾");runningCount=session.optInt("running_count");
                 JSONObject job=session.optJSONObject("current");busy=job!=null && "running".equals(job.optString("status"));stopping=busy&&job.optBoolean("cancel_requested");
                 status.setText(busy?"Working on your phone · 0.0x":"READY".equals(s.optString("status"))?"On-device · "+runningCount+"/2 jobs · 0.0x":s.optString("status")+" · "+s.optString("phase"));
@@ -329,11 +329,11 @@ public final class UnifiedCodingActivity extends Activity {
         if(attachments.uploading())return;
         final String attachmentKey=sessionId()+":"+workspace;
         final String task=prompt+attachments.prompt();
-        busy=true;controls();status.setText("Starting local task…");
+        send.setBackgroundTintList(ColorStateList.valueOf(0xffefeff0));busy=true;controls();status.setText("Starting local task…");
         final String path=workspace,taskProfile=profile,sid=sessionId();rememberDraft();
         network.execute(()->{try{JSONObject body=new JSONObject();body.put("workspace",path);body.put("profile",taskProfile);body.put("objective",task);body.put("session",sid);api("/api/session/run",body);
-            ui.post(()->{if(destroyed)return;attachments.clear(attachmentKey);if(sid.equals(sessionId())){objective.setText("");rememberDraft();}refresh();});
-        }catch(Exception e){ui.post(()->{if(sid.equals(sessionId())){busy=false;status.setText(e.getMessage());controls();}refresh();});}});
+            ui.post(()->{if(destroyed)return;attachments.clear(attachmentKey);if(sid.equals(sessionId())){objective.setText("");rememberDraft();send.setBackgroundTintList(ColorStateList.valueOf(0xffd3e7ce));}refresh();});
+        }catch(Exception e){ui.post(()->{if(sid.equals(sessionId())){busy=false;status.setText(e.getMessage());send.setBackgroundTintList(ColorStateList.valueOf(0xffffead4));controls();}refresh();});}});
     }
     private void load(){if(runningCount>0)return;ready=false;controls();status.setText("Loading coding model…");network.execute(()->{try{api("/api/switch",new JSONObject().put("mode","coding"));ui.post(()->refresh());}catch(Exception e){ui.post(()->error(e));}});}
     @Override protected void onSaveInstanceState(Bundle out){rememberDraft();out.putString("draft",objective.getText().toString());super.onSaveInstanceState(out);}

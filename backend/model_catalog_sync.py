@@ -15,6 +15,21 @@ def published_rows(text):
   if len(cells)>=4 and cells[2].startswith('https://opencode.ai/zen/'):
    rows.append({'id':cells[1],'name':cells[0],'endpoint':cells[2],'npm':cells[3]})
  return rows
+def published_prices(text):
+ """Read the first Go price table (Go, rather than Go Plus allowances)."""
+ prices={}
+ for tr in re.findall(r'<tr[^>]*>(.*?)</tr>',text,re.S):
+  cells=[html.unescape(re.sub('<[^>]+>','',c)).strip() for c in re.findall(r'<td[^>]*>(.*?)</td>',tr,re.S)]
+  if len(cells)<6:continue
+  def amount(value):
+   if value.lower()=='free':return 0.0
+   match=re.fullmatch(r'\$([0-9]+(?:\.[0-9]+)?)',value)
+   return float(match.group(1)) if match else None
+  cost={'input':amount(cells[1]),'output':amount(cells[2])}
+  if None in cost.values():continue
+  label=re.sub(r'\s+',' ',cells[0]).strip()
+  prices.setdefault(label,cost)
+ return prices
 def refresh(call,force=False):
  with LOCK:
   cached={}
@@ -26,7 +41,9 @@ def refresh(call,force=False):
    docs=published_rows(fetch('https://docs.opencode.ai/docs/zen/'))
    registry_data=json.loads(fetch('https://models.dev/api.json'))
    registry=registry_data['opencode']['models']
-   go_docs=published_rows(fetch('https://docs.opencode.ai/docs/go/'))
+   go_html=fetch('https://opencode.ai/docs/go/')
+   go_docs=published_rows(go_html)
+   go_prices=published_prices(go_html)
    go_registry=registry_data.get('opencode-go',{}).get('models',{})
    live={m['id'] for m in served};documented={m['id'] for m in docs}
    rows={m['id']:{'id':m['id'],'name':registry.get(m['id'],{}).get('name',m['id']),'served':True,'documented':False} for m in served}
@@ -47,6 +64,11 @@ def refresh(call,force=False):
    go_definitions={}
    for row in go_docs:
     meta=go_registry.get(row['id'],{})
+    row['cost']=go_prices.get(row['name'],meta.get('cost'))
+    peak=go_prices.get(row['name']+' (Peak)')
+    offpeak=go_prices.get(row['name']+' (Off-Peak)')
+    if peak and offpeak and row['id'].startswith('deepseek-'):
+     row['pricing_schedule']='deepseek';row['pricing']={'peak':peak,'offpeak':offpeak}
     definition={k:meta[k] for k in ('id','name','family','release_date','attachment','reasoning','temperature','tool_call','cost','limit','modalities') if k in meta}
     definition.setdefault('name',row['name']);definition.setdefault('limit',{'context':32768,'output':8192})
     definition['provider']={'npm':row['npm'],'api':'https://opencode.ai/zen/go/v1'}
@@ -67,7 +89,7 @@ def catalog(runtime,cache):
   prior=merged.get(pid,{'id':pid,'name':entry.get('name',pid),'models':{}})
   merged[pid]={**prior,'models':{**entry.get('models',{}),**prior.get('models',{})}}
  for provider in merged.values():
-  records=[{'id':m['id'],'name':m.get('name',m['id']),'available':provider['id'] in connected,'reason':'' if provider['id'] in connected else 'Connect this provider API key.'} for m in provider.get('models',{}).values()]
+  records=[{'id':m['id'],'name':m.get('name',m['id']),'cost':m.get('cost'),'available':provider['id'] in connected,'reason':'' if provider['id'] in connected else 'Connect this provider API key.'} for m in provider.get('models',{}).values()]
   if provider['id']=='opencode':
    native={m['id']:m for m in records}
    for row in cache.get('models',[]):

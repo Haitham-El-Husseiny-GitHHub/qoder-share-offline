@@ -22,7 +22,7 @@ def get(query):
   # Refresh may register newer models, so reread the authoritative runnable list.
   result=call('/provider',directory=query.get('directory',[''])[0])
   full=catalog(result,cache)
-  selected=query.get('provider',['opencode'])[0]
+  selected=query.get('provider',['opencode-go'])[0]
   return {**full,'provider_index':[{'id':p['id'],'name':p['name'],'connected':p['connected'],'count':len(p['models'])} for p in full['providers']],'providers':[p for p in full['providers'] if p['id']==selected]}
  return result
 def post(data):
@@ -35,16 +35,22 @@ def post(data):
  if action=='run':
   text=str(data.get('objective','')).strip()
   if not text:raise ValueError('Enter a task.')
-  report=source_lookup.acquire(text,directory,config={'offline':True})
-  if report.get('root'):directory=Path(report['root'])
-  elif source_lookup.app_token(text):raise ValueError(report.get('chosen',{}).get('reason','Source not found.')+' '+json.dumps(report.get('places',[])[:1]))
+  session=data.get('session')
+  if session:
+   if not re.fullmatch(r'[a-zA-Z0-9_-]+',session):raise ValueError('Invalid session.')
+   # Follow-up messages must keep their session's existing project context.
+   current=call('/session/'+session,directory=str(directory))
+   directory=source_lookup.project_for_path(current.get('directory',str(directory)))
+  else:
+   report=source_lookup.acquire(text,directory,config={'offline':True})
+   if report.get('root'):directory=Path(report['root'])
+   elif source_lookup.app_token(text):raise ValueError(report.get('chosen',{}).get('reason','Source not found.')+' '+json.dumps(report.get('places',[])[:1]))
   model=data.get('model','').split('/',1)
   if len(model)!=2:raise ValueError('Select a provider/model.')
   catalog=get({'path':['/provider'],'provider':[model[0]]})
   chosen=next((m for p in catalog['providers'] for m in p['models'] if m['id']==model[1]),None)
   if not chosen:raise ValueError('This model is not in the published provider catalog.')
   if chosen.get('coding_compatible') is False:raise ValueError('This model uses a structured decision API rather than coding chat.')
-  session=data.get('session')
   if not session:session=call('/session','POST',{'title':text[:80]},str(directory))['id']
   if not re.fullmatch(r'[a-zA-Z0-9_-]+',session):raise ValueError('Invalid session.')
   model=data.get('model','').split('/',1)

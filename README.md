@@ -1,3 +1,7 @@
+# Sessions redesign source update 89
+
+See [Sessions build 90 status and requirements](INSTALLATION-BUILD-90.md). Build 90 adds the original Qoder model picker catalogue/pricing and a verified credit counter. OpenCode Go execution requires its key; its allowance opens account usage. VPN activation requires a configured tunnel endpoint.
+
 # Qoder Share offline
 
 The current installation source is companion **83**, repaired after testing

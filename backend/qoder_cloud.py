@@ -13,7 +13,7 @@ def catalog(force=False):
   saved=json.loads(cache.read_text())
   if not force and time.time()-saved['updated_at']<60:return saved
  except (OSError,ValueError,KeyError):saved=None
- names=set(PUBLISHED)|{m['name'] for m in (saved or {}).get('models',[])};sources=[]
+ names=set(PUBLISHED)|{m['name'] for m in (saved or {}).get('models',[])};sources=[];rates={}
  for url in ('https://docs.qoder.com/qoder/model-selector','https://docs.qoder.com/cli/model','https://docs.qoder.com/user-guide/chat/model-tier-selector'):
   try:
    body=fetch(url);sources.append(url)
@@ -22,9 +22,13 @@ def catalog(force=False):
     if not cells:continue
     name=html.unescape(re.sub('<[^>]+>','',cells[0])).strip()
     if re.match(r'^(Qwen|Kimi|GLM|DeepSeek|MiniMax)[A-Za-z0-9.-]+$',name):names.add(name)
+    if url.endswith('/cli/model') and len(cells)>1:
+     rate=html.unescape(re.sub('<[^>]+>','',cells[-1])).strip()
+     match=re.search(r'([0-9]+(?:\.[0-9]+)?)\s*[x×]',rate)
+     if match and (name in {'Auto','Ultimate','Performance','Efficient'} or name in names):rates[name]=float(match[1])
   except (ValueError,subprocess.TimeoutExpired):continue
  names.discard('DeepSeek-Flash')
- data={'updated_at':time.time(),'sources':sources,'models':[{'id':name.lower() if name in {'Auto','Ultimate','Performance','Efficient'} else name,'name':name} for name in sorted(names)],'unfiltered':True}
+ data={'updated_at':time.time(),'sources':sources,'models':[{'id':name.lower() if name in {'Auto','Ultimate','Performance','Efficient'} else name,'name':name,**({'cli_multiplier':rates[name]} if name in rates else {})} for name in sorted(names)],'unfiltered':True}
  cache.parent.mkdir(exist_ok=True);cache.write_text(json.dumps(data))
  return data
 def save(data):
