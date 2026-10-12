@@ -81,6 +81,7 @@ public final class QoderEnhancements {
    JSONArray rows=published;if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);String n=row.optString("name");if(!n.isEmpty())models.put(n,row.has("cli_multiplier")?row.optDouble("cli_multiplier"):fallback.get(n));}
    for(Map.Entry<String,Double> entry:models.entrySet())if(!seen.contains(key(entry.getKey()))){String id=entry.getKey();if(Arrays.asList("Auto","Ultimate","Performance","Efficient").contains(id))id=id.toLowerCase(Locale.ROOT);result.add(copy(type,null,id,entry.getKey(),entry.getValue()==null?Double.NaN:entry.getValue(),true));seen.add(key(id));}
   }catch(Exception ignored){}
+  Collections.sort(result,(left,right)->{try{int order=name((String)field(left,"b").get(left)).compareToIgnoreCase(name((String)field(right,"b").get(right)));return order!=0?order:((String)field(left,"a").get(left)).compareToIgnoreCase((String)field(right,"a").get(right));}catch(Exception e){return 0;}});
   return result;
  }
  private static Object copy(Class<?> type,Object old,String id,String label,double factor,boolean estimate)throws Exception {

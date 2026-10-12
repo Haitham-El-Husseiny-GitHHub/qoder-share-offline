@@ -4,6 +4,12 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 CACHE=ROOT/'runtime/model-catalog.json'
 LOCK=threading.Lock()
+def model_developer(model):
+ """Developer grouping inside Go; not a separate API credential/provider route."""
+ name=(model.get('id','')+' '+model.get('family','')+' '+model.get('name','')).lower()
+ for prefixes,label in [(('claude','anthropic'),'Anthropic'),(('deepseek',),'DeepSeek'),(('gemini','gemma'),'Google'),(('glm','z-ai','zai'),'Z.AI'),(('gpt','o1','o3','o4'),'OpenAI'),(('grok',),'xAI'),(('kimi',),'Moonshot AI'),(('longcat',),'Meituan'),(('mimo',),'Xiaomi'),(('minimax',),'MiniMax'),(('muse','llama'),'Meta'),(('qwen',),'Alibaba'),(('step',),'StepFun'),(('hy3','hy4','hunyuan'),'Tencent')]:
+  if any(name.startswith(prefix) for prefix in prefixes):return label
+ return 'OpenCode'
 def fetch(url):
  p=subprocess.run(['curl','--fail','--silent','--show-error','--location','--max-time','15','--user-agent','Mozilla/5.0',url],capture_output=True,text=True,timeout=20)
  if p.returncode:raise ValueError('Catalog fetch failed: '+url)
@@ -103,5 +109,7 @@ def catalog(runtime,cache):
     known=native.get(row['id'])
     native[row['id']]={**row,'available':bool(known and known.get('available')),'reason':'' if known and known.get('available') else 'OpenCode Go provider authentication applies.'}
    records=list(native.values())
-  providers.append({'id':provider['id'],'name':provider.get('name',provider['id']),'connected':provider['id'] in connected,'models':sorted(records,key=lambda m:(not m.get('available'),m['name'].lower()))})
- return {'connected':connected,'providers':providers,'catalog':{k:v for k,v in cache.items() if k not in {'models','go_models','provider_registry'}}}
+  if provider['id']=='opencode-go':
+   records=[{**m,'developer':model_developer(m),'credential_provider':'opencode-go'} for m in records]
+  providers.append({'id':provider['id'],'name':provider.get('name',provider['id']),'connected':provider['id'] in connected,'models':sorted(records,key=lambda m:(m['name'].casefold(),m['id']))})
+ return {'connected':connected,'providers':sorted(providers,key=lambda p:(p['name'].casefold(),p['id'])),'catalog':{k:v for k,v in cache.items() if k not in {'models','go_models','provider_registry'}}}

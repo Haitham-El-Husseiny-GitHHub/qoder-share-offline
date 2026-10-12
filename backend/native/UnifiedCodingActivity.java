@@ -165,11 +165,14 @@ public final class UnifiedCodingActivity extends Activity {
             JSONArray items=api("/api/models",null).getJSONArray("data");
             ui.post(()->{if(destroyed)return;
                 PopupMenu dropdown=new PopupMenu(this,model);
-                for(int i=0;i<items.length();i++){
-                    JSONObject m=items.optJSONObject(i);if(m==null)continue;
+                java.util.ArrayList<Integer> order=new java.util.ArrayList<>();
+                for(int i=0;i<items.length();i++)if(items.optJSONObject(i)!=null)order.add(i);
+                java.util.Collections.sort(order,(left,right)->items.optJSONObject(left).optString("name").compareToIgnoreCase(items.optJSONObject(right).optString("name")));
+                for(int rank=0;rank<order.size();rank++){
+                    int i=order.get(rank);JSONObject m=items.optJSONObject(i);
                     String label=m.optString("name")+" · 0.0x";
                     if(!m.optBoolean("selectable"))label+=" — "+m.optString("reason");
-                    MenuItem entry=dropdown.getMenu().add(0,i,i,label);
+                    MenuItem entry=dropdown.getMenu().add(0,i,rank,label);
                     entry.setEnabled(m.optBoolean("selectable"));
                     entry.setCheckable(true);entry.setChecked(model.getText().toString().startsWith(m.optString("name")));
                 }

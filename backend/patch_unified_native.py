@@ -5,7 +5,7 @@ import os, re, subprocess, zipfile
 HOME = Path('/data/data/com.termux/files/home')
 SOURCE = Path(__file__).resolve().parent
 ROOT = HOME / 'qoder-native-share/decoded-selfhost'
-BUILD = HOME / 'qoder-native-share/unified-91'
+BUILD = HOME / 'qoder-native-share/unified-92'
 SDK = HOME / 'android-sdk'
 JAR = SDK / 'platforms/android-36/android.jar'
 BUILD.mkdir(exist_ok=True)
@@ -65,7 +65,7 @@ s=s[:start]+'''.method public onClick(Landroid/view/View;)V
 .end method'''+s[end:]
 p.write_text(s)
 p=ROOT/'apktool.yml'
-s=p.read_text();s=re.sub(r'versionCode: .*','versionCode: 91',s);s=re.sub(r'versionName: .*','versionName: 0.3.13-restart',s);p.write_text(s)
+s=p.read_text();s=re.sub(r'versionCode: .*','versionCode: 92',s);s=re.sub(r'versionName: .*','versionName: 0.3.14-selectors',s);p.write_text(s)
 run(['javac','-source','8','-target','8','-classpath',JAR,'-d',BUILD/'classes',*sorted((SOURCE/'native').glob('*.java'))])
 classes=list((BUILD/'classes').rglob('*.class'))
 run(['java','-cp',SDK/'build-tools/36.0.0/lib/d8.jar','com.android.tools.r8.D8','--lib',JAR,'--min-api','30','--output',BUILD/'dex',*classes])
@@ -75,7 +75,7 @@ with zipfile.ZipFile(BUILD/'base.apk') as original,zipfile.ZipFile(BUILD/'unsign
         if info.filename!='classes4.dex':out.writestr(info,original.read(info.filename))
     out.write(BUILD/'dex/classes.dex','classes4.dex',compress_type=zipfile.ZIP_STORED)
 run(['zipalign','-f','-p','4',BUILD/'unsigned.apk',BUILD/'aligned.apk'])
-apk=Path('/sdcard/Download/Qoder-Share-Sessions-91.apk')
+apk=Path('/sdcard/Download/Qoder-Share-Sessions-92.apk')
 run(['apksigner','sign','--ks',HOME/'qoder-native-share/share.keystore','--ks-key-alias','qoder-share','--ks-pass','file:'+str(HOME/'qoder-native-share/signing.pass'),'--out',apk,BUILD/'aligned.apk'])
 run(['apksigner','verify','--print-certs',apk])
 print('BUILT '+str(apk),flush=True)
