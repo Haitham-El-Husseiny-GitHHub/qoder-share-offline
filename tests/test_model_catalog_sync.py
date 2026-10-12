@@ -36,3 +36,10 @@ class CatalogTests(unittest.TestCase):
     with self.assertRaises(ValueError):cloud.run({'model':'paid','directory':str(root),'objective':'Inspect files'})
     self.assertTrue(cloud.ACTIVE[record['id']]['record']['cancel_requested']);cloud.ACTIVE.clear()
 if __name__=='__main__':unittest.main()
+
+class LiveRegistryTests(unittest.TestCase):
+ def test_new_registry_provider_and_model_are_visible(self):
+  result=sync.catalog({'all':[{'id':'existing','models':{}}],'connected':[]},{'provider_registry':{'new':{'name':'New Provider','models':{'new-model':{'id':'new-model','name':'New Model'}}}}})
+  provider=next(p for p in result['providers'] if p['id']=='new')
+  self.assertEqual(provider['models'][0]['id'],'new-model')
+  self.assertFalse(provider['connected'])

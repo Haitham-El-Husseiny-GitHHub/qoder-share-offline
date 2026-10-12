@@ -18,3 +18,15 @@ $('fresh').onclick=()=>{session='';localStorage.removeItem('oc-session');$('outp
 $('diff').onclick=async()=>{if(!session)return;try{$('output').textContent=JSON.stringify(await get('/session/'+session+'/diff'),null,2)}catch(e){error(e)}};
 async function poll(){if(!session||polling)return;polling=true;try{const messages=await get('/session/'+session+'/message');$('output').textContent=messages.flatMap(m=>[...(m.parts||[]),...(m.info?.error?[{type:'text',text:'Provider error: '+JSON.stringify(m.info.error)}]:[])]).map(p=>p.type==='text'?p.text:p.type==='tool'?'Tool: '+p.tool+'\n'+JSON.stringify(p.state,null,2):'').filter(Boolean).join('\n\n');const statuses=await get('/session/status');$('status').textContent='OpenCode · '+(statuses[session]?.type||'idle')}catch(e){error(e)}finally{polling=false}}
 refresh();setInterval(poll,2000);
+
+async function bridgeStatus(){
+ try{const r=await fetch('/api/bridge'),d=await r.json();$('bridge').textContent='Termux connected · '+(d.rish_connected?'Rish connected · '+d.access_level+' access':'Rish reconnecting · start Shizuku if Android requires it');}
+ catch(e){$('bridge').textContent='Termux bridge reconnecting…';}
+}
+bridgeStatus();setInterval(bridgeStatus,5000);
+window.addEventListener('online',()=>{bridgeStatus();refresh()});
+
+let catalogRefreshing=false;
+async function autoCatalog(){if(catalogRefreshing)return;catalogRefreshing=true;try{await refresh()}finally{catalogRefreshing=false}}
+setInterval(autoCatalog,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoCatalog()});

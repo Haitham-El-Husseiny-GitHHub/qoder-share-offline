@@ -11,9 +11,9 @@ def catalog(force=False):
  cache=ROOT/'runtime/qoder-published-models.json'
  try:
   saved=json.loads(cache.read_text())
-  if not force and time.time()-saved['updated_at']<3600:return saved
+  if not force and time.time()-saved['updated_at']<60:return saved
  except (OSError,ValueError,KeyError):saved=None
- names=set(PUBLISHED);sources=[]
+ names=set(PUBLISHED)|{m['name'] for m in (saved or {}).get('models',[])};sources=[]
  for url in ('https://docs.qoder.com/qoder/model-selector','https://docs.qoder.com/cli/model','https://docs.qoder.com/user-guide/chat/model-tier-selector'):
   try:
    body=fetch(url);sources.append(url)

@@ -9,7 +9,7 @@ def status():
         if _cached is not None and time.monotonic() - _checked < 20:
             return dict(_cached)
         rish = shutil.which('rish')
-        data = {'termux': bool(os.environ.get('TERMUX_VERSION') or os.environ.get('PREFIX','').startswith('/data/data/com.termux/')), 'rish_installed': bool(rish), 'rish_connected': False,
+        data = {'shared_bridge': True, 'clients': ['offline','qoder-cloud','opencode'], 'termux': bool(os.environ.get('TERMUX_VERSION') or os.environ.get('PREFIX','').startswith('/data/data/com.termux/')), 'rish_installed': bool(rish), 'rish_connected': False,
                 'access_level': 'offline', 'private_app_data': False, 'checked_at': time.time(), 'detail': 'Rish is not installed in Termux.'}
         if rish:
             try:

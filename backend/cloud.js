@@ -8,3 +8,15 @@ $('run').onclick=async()=>{try{$('run').disabled=true;const d=await api('/run',{
 $('stop').onclick=async()=>{try{if(job)await api('/stop',{id:job})}catch(e){$('error').textContent=e.message}};
 async function poll(){if(!job||polling)return;polling=true;try{const d=await api('/job?id='+encodeURIComponent(job));$('output').textContent=d.status+' · '+d.model+'\n\n'+(d.output||d.error||'Starting…');$('run').disabled=['starting','running'].includes(d.status)}catch(e){$('error').textContent=e.message}finally{polling=false}}
 refresh();setInterval(poll,1500);
+
+async function bridgeStatus(){
+ try{const r=await fetch('/api/bridge'),d=await r.json();$('bridge').textContent='Termux connected · '+(d.rish_connected?'Rish connected · '+d.access_level+' access':'Rish reconnecting · start Shizuku if Android requires it');}
+ catch(e){$('bridge').textContent='Termux bridge reconnecting…';}
+}
+bridgeStatus();setInterval(bridgeStatus,5000);
+window.addEventListener('online',()=>{bridgeStatus();refresh()});
+
+let catalogRefreshing=false;
+async function autoCatalog(){if(catalogRefreshing)return;catalogRefreshing=true;try{await refresh()}finally{catalogRefreshing=false}}
+setInterval(autoCatalog,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoCatalog()});

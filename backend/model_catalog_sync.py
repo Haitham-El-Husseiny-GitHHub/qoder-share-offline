@@ -20,7 +20,7 @@ def refresh(call,force=False):
   cached={}
   try:cached=json.loads(CACHE.read_text())
   except (OSError,ValueError):pass
-  if cached and not force and time.time()-cached.get('updated_at',0)<3600:return cached
+  if cached and not force and time.time()-cached.get('updated_at',0)<60:return cached
   try:
    served=json.loads(fetch('https://opencode.ai/zen/v1/models'))['data']
    docs=published_rows(fetch('https://docs.opencode.ai/docs/zen/'))
@@ -52,7 +52,7 @@ def refresh(call,force=False):
     definition['provider']={'npm':row['npm'],'api':'https://opencode.ai/zen/go/v1'}
     go_definitions[row['id']]=definition
    call('/config','PATCH',{'provider':{'opencode-go':{'models':go_definitions}}})
-   data={'go_models':go_docs,'go_documented_count':len(go_docs),'updated_at':time.time(),'public_count':len(live),'documented_count':len(documented),'models':list(rows.values()),'source':'https://opencode.ai/zen/v1/models','documentation':'https://docs.opencode.ai/docs/zen/'}
+   data={'provider_registry':registry_data,'go_models':go_docs,'go_documented_count':len(go_docs),'updated_at':time.time(),'public_count':len(live),'documented_count':len(documented),'models':list(rows.values()),'source':'https://opencode.ai/zen/v1/models','documentation':'https://docs.opencode.ai/docs/zen/'}
    CACHE.parent.mkdir(parents=True,exist_ok=True)
    tmp=CACHE.with_suffix('.tmp');tmp.write_text(json.dumps(data));tmp.replace(CACHE)
    return data
@@ -62,7 +62,11 @@ def refresh(call,force=False):
 def catalog(runtime,cache):
  connected=runtime.get('connected',[])
  providers=[]
- for provider in runtime.get('all',[]):
+ merged={p['id']:p for p in runtime.get('all',[])}
+ for pid,entry in cache.get('provider_registry',{}).items():
+  prior=merged.get(pid,{'id':pid,'name':entry.get('name',pid),'models':{}})
+  merged[pid]={**prior,'models':{**entry.get('models',{}),**prior.get('models',{})}}
+ for provider in merged.values():
   records=[{'id':m['id'],'name':m.get('name',m['id']),'available':provider['id'] in connected,'reason':'' if provider['id'] in connected else 'Connect this provider API key.'} for m in provider.get('models',{}).values()]
   if provider['id']=='opencode':
    native={m['id']:m for m in records}
@@ -78,4 +82,4 @@ def catalog(runtime,cache):
     native[row['id']]={**row,'available':bool(known and known.get('available')),'reason':'' if known and known.get('available') else 'OpenCode Go provider authentication applies.'}
    records=list(native.values())
   providers.append({'id':provider['id'],'name':provider.get('name',provider['id']),'connected':provider['id'] in connected,'models':sorted(records,key=lambda m:(not m.get('available'),m['name'].lower()))})
- return {'connected':connected,'providers':providers,'catalog':{k:v for k,v in cache.items() if k not in {'models','go_models'}}}
+ return {'connected':connected,'providers':providers,'catalog':{k:v for k,v in cache.items() if k not in {'models','go_models','provider_registry'}}}

@@ -122,13 +122,7 @@ public final class UnifiedCodingActivity extends Activity {
         if(destroyed||(lastBridgeStart!=0&&android.os.SystemClock.elapsedRealtime()-lastBridgeStart<30000))return;
         lastBridgeStart=android.os.SystemClock.elapsedRealtime();
         if(checkSelfPermission("com.termux.permission.RUN_COMMAND")!=android.content.pm.PackageManager.PERMISSION_GRANTED){if(!bridgePermissionAsked){bridgePermissionAsked=true;requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"},302);}if(bridge!=null)bridge.setText("Allow Qoder to run commands in Termux to reconnect automatically.");return;}
-        try{
-            Intent i=new Intent("com.termux.RUN_COMMAND").setClassName("com.termux","com.termux.app.RunCommandService");
-            i.putExtra("com.termux.RUN_COMMAND_PATH","/data/data/com.termux/files/usr/bin/sh");
-            i.putExtra("com.termux.RUN_COMMAND_ARGUMENTS",new String[]{"/data/data/com.termux/files/home/qoder-selfhost/bridge-start.sh"});
-            i.putExtra("com.termux.RUN_COMMAND_WORKDIR","/data/data/com.termux/files/home");
-            i.putExtra("com.termux.RUN_COMMAND_BACKGROUND",true);startService(i);
-        }catch(Exception e){if(bridge!=null)bridge.setText("Termux bridge · open Termux to reconnect");}
+        StartupBridge.ensure(this);
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){
         super.onRequestPermissionsResult(request,permissions,results);
