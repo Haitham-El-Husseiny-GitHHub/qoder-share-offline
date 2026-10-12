@@ -265,6 +265,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.valid(navigation=self.path in ("/","/coding","/chat","/opencode")): return self.answer(403,{"error":"Local origin required"})
         parsed=urllib.parse.urlsplit(self.path)
+        if parsed.path=='/api/localhost':
+            from restart_localhost import status
+            return self.answer(200,status())
         if parsed.path in ('/api/account/qoder','/api/account/go'):
             import account_status
             try:

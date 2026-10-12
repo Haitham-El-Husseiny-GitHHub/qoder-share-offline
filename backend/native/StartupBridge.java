@@ -35,7 +35,9 @@ public final class StartupBridge {
   android.widget.LinearLayout row=(android.widget.LinearLayout)bar;
   android.view.View offline=activity.findViewById(0x51a71002);
   if(offline instanceof android.widget.Button)((android.widget.Button)offline).setText("Offline");
-  if(activity.findViewById(0x51a71004)!=null){QoderEnhancements.attach(activity);return;}
+  android.view.View restart=activity.findViewById(0x51a71001);
+  if(restart instanceof android.widget.Button)LocalhostButton.attach(activity,(android.widget.Button)restart);
+  if(activity.findViewById(0x51a71004)!=null){styleNavigation(row);QoderEnhancements.attach(activity);return;}
   android.widget.Button button=new android.widget.Button(activity);
   button.setId(0x51a71004);button.setText("OpenCode");button.setAllCaps(false);
   button.setTextSize(13);button.setMinWidth(0);button.setMinimumWidth(0);
@@ -44,7 +46,18 @@ public final class StartupBridge {
   params.leftMargin=4;params.rightMargin=4;
   button.setOnClickListener(v->activity.startActivity(new Intent().setClassName(activity,"com.qoder.share.OpenCodeActivity")));
   row.addView(button,params);
+  styleNavigation(row);
   QoderEnhancements.attach(activity);
+ }
+ private static void styleNavigation(android.widget.LinearLayout row){
+  int padding=(int)(6*row.getResources().getDisplayMetrics().density);
+  for(int i=0;i<row.getChildCount();i++){
+   android.view.View child=row.getChildAt(i);if(!(child instanceof android.widget.Button))continue;
+   android.widget.Button b=(android.widget.Button)child;
+   b.setAllCaps(false);b.setSingleLine(true);b.setHorizontallyScrolling(false);b.setMaxLines(1);
+   b.setPadding(padding,0,padding,0);b.setMinWidth(0);b.setMinimumWidth(0);
+   b.setAutoSizeTextTypeUniformWithConfiguration(10,13,1,android.util.TypedValue.COMPLEX_UNIT_SP);
+  }
  }
  public static synchronized void install(Application app){
   if(installed)return;installed=true;
