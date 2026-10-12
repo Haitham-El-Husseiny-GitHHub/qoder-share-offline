@@ -4,6 +4,12 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 import model_catalog_sync as sync
 
 class ProviderGroupTests(unittest.TestCase):
+ def test_persistent_registration_retains_settings_and_distinct_models(self):
+  import json,tempfile
+  with tempfile.TemporaryDirectory() as folder:
+   path=Path(folder)/'opencode.json';path.write_text(json.dumps({'mcp':{'existing':{'enabled':True}},'provider':{'opencode-go':{'options':{'baseURL':'existing'},'models':{'old':{'name':'Same name'}}}}}))
+   sync.persist_models('opencode-go',{'new':{'name':'Same name'}},path)
+   saved=json.loads(path.read_text());self.assertTrue(saved['mcp']['existing']['enabled']);self.assertEqual(saved['provider']['opencode-go']['options']['baseURL'],'existing');self.assertEqual(set(saved['provider']['opencode-go']['models']),{'old','new'})
  def test_go_developers_share_one_credential_route(self):
   runtime={'connected':['opencode-go'],'all':[{'id':'opencode-go','name':'OpenCode Go','models':{'a':{'id':'gpt-6','name':'GPT'},'b':{'id':'claude-haiku','name':'Claude'}}}]}
   result=sync.catalog(runtime,{})['providers'][0]['models']

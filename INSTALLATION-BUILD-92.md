@@ -9,3 +9,5 @@ CLI · localhost is an active, persistent selection in the session list and chat
 Qoder's original model picker and the Offline model dropdown are alphabetized. Existing IDs, prices, comparable variants and permissions are preserved.
 
 Signed output: /sdcard/Download/Qoder-Share-Sessions-92.apk. Existing sessions and account credentials are retained.
+
+Live execution verification found volatile project-only registration. Model definitions are now persisted while retaining existing global settings, then applied through the global config endpoint so task instances can resolve the same models shown in the catalogue. A live Go-backed CLI request returned READY.

@@ -4,6 +4,20 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 CACHE=ROOT/'runtime/model-catalog.json'
 LOCK=threading.Lock()
+def persist_models(provider_id,definitions,path=None):
+ """Persist model registration; PATCH-only configuration can disappear on instance reload."""
+ if path is None:
+  if not Path('/data/data/com.termux/files/usr').is_dir():return
+  path=Path('/data/data/com.termux/files/home/.config/opencode/opencode.json')
+ path=Path(path)
+ try:data=json.loads(path.read_text())
+ except FileNotFoundError:data={}
+ if not isinstance(data,dict):raise ValueError('OpenCode configuration is not an object.')
+ providers=data.setdefault('provider',{});provider=providers.setdefault(provider_id,{})
+ provider['models']={**provider.get('models',{}),**definitions}
+ text=json.dumps(data,indent=2)+'\n'
+ if path.exists() and path.read_text()==text:return
+ path.parent.mkdir(parents=True,exist_ok=True);temporary=path.with_suffix('.tmp');temporary.write_text(text);temporary.chmod(0o600);temporary.replace(path)
 def model_developer(model):
  """Developer grouping inside Go; not a separate API credential/provider route."""
  name=(model.get('id','')+' '+model.get('family','')+' '+model.get('name','')).lower()
@@ -66,7 +80,8 @@ def refresh(call,force=False):
     row['coding_compatible']=not mid.startswith('jev-')
     if not mid.startswith('jev-'):definitions[mid]=definition
    # Preserve existing settings and credentials; register supported endpoint definitions.
-   call('/config','PATCH',{'provider':{'opencode':{'models':definitions}}})
+   persist_models('opencode',definitions)
+   call('/global/config','PATCH',{'provider':{'opencode':{'models':definitions}}})
    go_definitions={}
    for row in go_docs:
     meta=go_registry.get(row['id'],{})
@@ -79,7 +94,8 @@ def refresh(call,force=False):
     definition.setdefault('name',row['name']);definition.setdefault('limit',{'context':32768,'output':8192})
     definition['provider']={'npm':row['npm'],'api':'https://opencode.ai/zen/go/v1'}
     go_definitions[row['id']]=definition
-   call('/config','PATCH',{'provider':{'opencode-go':{'models':go_definitions}}})
+   persist_models('opencode-go',go_definitions)
+   call('/global/config','PATCH',{'provider':{'opencode-go':{'models':go_definitions}}})
    data={'provider_registry':registry_data,'go_models':go_docs,'go_documented_count':len(go_docs),'updated_at':time.time(),'public_count':len(live),'documented_count':len(documented),'models':list(rows.values()),'source':'https://opencode.ai/zen/v1/models','documentation':'https://docs.opencode.ai/docs/zen/'}
    CACHE.parent.mkdir(parents=True,exist_ok=True)
    tmp=CACHE.with_suffix('.tmp');tmp.write_text(json.dumps(data));tmp.replace(CACHE)
